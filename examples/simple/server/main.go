@@ -30,7 +30,7 @@ func main() {
 		}
 	}
 
-	lis, err := net.Listen("tcp", "127.0.0.1:1337")
+	lis, err := net.Listen("tcp", "127.0.0.1:1338")
 	if err != nil {
 		log.Fatalf("[MAIN] failed to listen: %v", err)
 	}

@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -136,10 +135,6 @@ func (s *Server) Send(pub [32]byte, msg []byte) error {
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
 func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan struct{}) {
-	defer func() {
-		fmt.Println("----> [Server] Reading goroutine closed")
-	}()
-
 	s.mu.Lock()
 	tr, ok := s.conns[pubKey]
 	s.mu.Unlock()

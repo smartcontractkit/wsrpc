@@ -15,16 +15,11 @@ type ConnectOptions struct {
 	// TransportCredentials stores the Authenticator required to setup a client
 	// connection. Only one of TransportCredentials and CredsBundle is non-nil.
 	TransportCredentials TransportCredentials
-	// WriteBufferSize sets the size of write buffer which in turn determines how much data can be batched before it's written on the wire.
-	WriteBufferSize int
-	// ReadBufferSize sets the size of read buffer, which in turn determines how much data can be read at most for one read syscall.
-	ReadBufferSize int
 }
 
 type ClientTransport interface {
 	// Close tears down this transport. Once it returns, the transport
-	// should not be accessed any more. The caller must make sure this
-	// is called only once.
+	// should not be accessed any more.
 	Close() error
 
 	// Write sends a message to the stream.
@@ -32,13 +27,6 @@ type ClientTransport interface {
 
 	// Read reads a message from the stream
 	Read() <-chan []byte
-
-	// Error returns a channel that is closed when some I/O error
-	// happens. Typically the caller should have a goroutine to monitor
-	// this in order to take action (e.g., close the current transport
-	// and create a new one) in error case. It should not return nil
-	// once the transport is initiated.
-	Error() <-chan struct{}
 }
 
 // WebsocketClient implements the ClientTransport interface with websockets.
@@ -47,8 +35,9 @@ type WebsocketClient struct {
 	cancel context.CancelFunc
 
 	conn    *websocket.Conn // underlying communication channel
-	onClose func()
+	onClose func()          // Callback function called when the transport is closed
 
+	// Communication channels
 	write chan []byte
 	read  chan []byte
 }
@@ -71,8 +60,7 @@ func NewWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 	url := fmt.Sprintf("wss://%s", addr)
 	conn, _, err := d.Dial(url, http.Header{})
 	if err != nil {
-		fmt.Println("error dialing", err)
-		return nil, fmt.Errorf("transport: error while dialing %v", err)
+		return nil, fmt.Errorf("[Transport] error while dialing %v", err)
 	}
 
 	c := &WebsocketClient{
@@ -91,40 +79,39 @@ func NewWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 	return c, nil
 }
 
+// Close closes the websocket connection and cleans up pump goroutines.
 func (c *WebsocketClient) Close() error {
-	fmt.Println("Calling websocket client close")
+	if err := c.conn.Close(); err != nil {
+		return err
+	}
 	close(c.write)
 
-	return c.conn.Close()
+	return nil
 }
 
+// Read returns a channel which provides the messages as they are read
+func (c *WebsocketClient) Read() <-chan []byte {
+	return c.read
+}
+
+// Write writes a message the websocket connection
 func (c *WebsocketClient) Write(msg []byte) error {
 	c.write <- msg
 
 	return nil
 }
 
-func (c *WebsocketClient) Error() <-chan struct{} {
-	return c.ctx.Done()
-}
-
-func (c *WebsocketClient) Read() <-chan []byte {
-	return c.read
-}
-
 // readPump pumps messages from the websocket connection.
-
+//
 // The application runs readPump in a per-connection goroutine. This ensures
 // that there is at most one reader on a connection by executing all reads from
 // this goroutine.
 func (c *WebsocketClient) readPump() {
 	defer func() {
+		fmt.Println("----> [Transport] Closing read pump goroutine")
 		c.onClose()
-		c.cancel()
 	}()
-	// Put this back in with confiugration
-	// c.conn.SetReadLimit(maxMessageSize)
-	// c.conn.SetReadDeadline(time.Now().Add(pongWait))
+
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
@@ -145,9 +132,9 @@ func (c *WebsocketClient) readPump() {
 func (c *WebsocketClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		fmt.Println("----> [Transport] Closing write pump goroutine")
 		c.onClose()
 		ticker.Stop()
-		c.cancel()
 	}()
 
 	// Pong Reply Handler

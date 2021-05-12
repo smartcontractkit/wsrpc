@@ -10,16 +10,13 @@ import (
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 )
 
-// TODO - Figure out how to deal with write/read deadlines
-
 var (
 	// errConnClosing indicates that the connection is closing.
 	errConnClosing = errors.New("grpc: the connection is closing")
 )
 
-// ClientConn represents a virtual connection to a conceptual endpoint, to
+// ClientConn represents a virtual connection to a websocket endpoint, to
 // perform RPCs.
-//
 type ClientConn struct {
 	ctx context.Context
 	mu  sync.RWMutex
@@ -70,31 +67,22 @@ func (cc *ClientConn) newAddrConn(addr string) (*addrConn, error) {
 		cc:      cc,
 		addr:    addr,
 		dopts:   cc.dopts,
-
-		// resetBackoff: make(chan struct{}),
 	}
 	ac.ctx, ac.cancel = context.WithCancel(cc.ctx)
-	// Track ac in cc. This needs to be done before any getTransport(...) is called.
 	cc.mu.Lock()
-	// if cc.conn == nil {
-	// 	cc.mu.Unlock()
-	// 	return nil, ErrClientConnClosing
-	// }
 
 	cc.conn = ac
 	cc.csCh = csCh
 	cc.mu.Unlock()
 
-	// Register handlers when the state changes
-	go cc.listen()
+	go cc.listenForRead()
 
 	return ac, nil
 }
 
-// TODO - Rename
-// listen for the connectivty state to be ready and enable the handler
-// TODO - Shutdown the routine during when the client is closed
-func (cc *ClientConn) listen() {
+// listenForRead listens for the connectivty state to be ready and enables the
+// read handler
+func (cc *ClientConn) listenForRead() {
 	for {
 		s := <-cc.csCh
 
@@ -102,7 +90,7 @@ func (cc *ClientConn) listen() {
 
 		if s == ConnectivityStateReady {
 			done := make(chan struct{})
-			go cc.startRead(done)
+			go cc.handleRead(done)
 		} else {
 			if done != nil {
 				close(done)
@@ -111,11 +99,11 @@ func (cc *ClientConn) listen() {
 	}
 }
 
-// TODO - Rename
-func (cc *ClientConn) startRead(done <-chan struct{}) {
+// handleRead listens to the transport read channel and passes the message to the
+// readFn handler.
+func (cc *ClientConn) handleRead(done <-chan struct{}) {
 	for {
 		select {
-
 		case msg := <-cc.conn.transport.Read():
 			cc.readFn(msg)
 		case <-done:
@@ -135,18 +123,20 @@ func (cc *ClientConn) Close() {
 	conn.teardown()
 }
 
-// TODO - Figure out a way to return errors
-func (cc *ClientConn) Send(message string) error {
+// Send writes the message to the connection
+func (cc *ClientConn) Send(msg []byte) error {
 	if cc.conn.state != ConnectivityStateReady {
 		return errors.New("connection is not ready")
 	}
 
-	cc.conn.transport.Write([]byte(message))
+	cc.conn.transport.Write(msg)
 
 	return nil
 }
 
-func (cc *ClientConn) RegisterHandler(handler func(message []byte)) {
+// RegisterReadHandler registers a handler for incoming messages from the
+// transport.
+func (cc *ClientConn) RegisterReadHandler(handler func(message []byte)) {
 	cc.readFn = handler
 }
 
@@ -171,10 +161,10 @@ type addrConn struct {
 	state ConnectivityState
 	// Notifies this channel when the ConnectivityState changes
 	stateCh chan ConnectivityState
-
-	// resetBackoff chan struct{}
 }
 
+// connect starts creating a transport.
+// It does nothing if the ac is not IDLE.
 func (ac *addrConn) connect() error {
 	ac.mu.Lock()
 	if ac.state == ConnectivityStateShutdown {
@@ -189,7 +179,7 @@ func (ac *addrConn) connect() error {
 
 	// Update connectivity state within the lock to prevent subsequent or
 	// concurrent calls from resetting the transport more than once.
-	ac.updateConnectivityState(ConnectivityStateConnecting, nil)
+	ac.updateConnectivityState(ConnectivityStateConnecting)
 	ac.mu.Unlock()
 
 	// Start a goroutine connecting to the server asynchronously.
@@ -199,7 +189,7 @@ func (ac *addrConn) connect() error {
 }
 
 // Note: this requires a lock on ac.mu.
-func (ac *addrConn) updateConnectivityState(s ConnectivityState, lastErr error) {
+func (ac *addrConn) updateConnectivityState(s ConnectivityState) {
 	if ac.state == s {
 		return
 	}
@@ -208,6 +198,8 @@ func (ac *addrConn) updateConnectivityState(s ConnectivityState, lastErr error) 
 	log.Printf("[AddrConn] Connectivity State: %s", s)
 }
 
+// resetTransport attempts to connect to the server. If the connection fails,
+// it will continously attempt reconnection with an exponential backoff.
 func (ac *addrConn) resetTransport() {
 	for i := 0; ; i++ {
 		ac.mu.Lock()
@@ -220,8 +212,14 @@ func (ac *addrConn) resetTransport() {
 		addr := ac.addr
 		copts := ac.dopts.copts
 
-		ac.updateConnectivityState(ConnectivityStateConnecting, nil)
+		// Close the current transport
+		curTr := ac.transport
 		ac.transport = nil
+		if curTr != nil {
+			curTr.Close()
+		}
+
+		ac.updateConnectivityState(ConnectivityStateConnecting)
 		ac.mu.Unlock()
 
 		newTr, reconnect, err := ac.createTransport(addr, copts)
@@ -232,7 +230,7 @@ func (ac *addrConn) resetTransport() {
 				ac.mu.Unlock()
 				return
 			}
-			ac.updateConnectivityState(ConnectivityStateTransientFailure, err)
+			ac.updateConnectivityState(ConnectivityStateTransientFailure)
 			ac.mu.Unlock()
 
 			// Backoff.
@@ -240,8 +238,7 @@ func (ac *addrConn) resetTransport() {
 			log.Printf("[AddrConn] Waiting %s to reconnect", backoffFor)
 			select {
 			case <-timer.C:
-			// case <-b:
-			// 	timer.Stop()
+				// NOOP - This falls through to continue to retry connecting
 			case <-ac.ctx.Done():
 				timer.Stop()
 				return
@@ -249,7 +246,7 @@ func (ac *addrConn) resetTransport() {
 			continue
 		}
 
-		// Close the transport if in a shutdown state
+		// Close the transport early if in a SHUTDOWN state
 		ac.mu.Lock()
 		if ac.state == ConnectivityStateShutdown {
 			ac.mu.Unlock()
@@ -259,18 +256,20 @@ func (ac *addrConn) resetTransport() {
 		ac.transport = newTr
 		ac.dopts.bs.Reset()
 
-		ac.updateConnectivityState(ConnectivityStateReady, nil)
+		ac.updateConnectivityState(ConnectivityStateReady)
 
 		ac.mu.Unlock()
 
 		// Block until the created transport is down. When this happens, we
 		// attempt to reconnect by starting again from the top
 		<-reconnect.Done()
-		// hcancel()
 	}
-
 }
 
+// createTransport creates a new transport. If it fails to connect to the server,
+// it returns an error which used to detect whether a retry is necessary. This
+// also returns a reconnect event which is fired when the transport closes due
+// to issues with the underlying connection.
 func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTransport, *Event, error) {
 	reconnect := NewEvent()
 	once := sync.Once{}
@@ -280,11 +279,10 @@ func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTr
 		ac.mu.Lock()
 		once.Do(func() {
 			if ac.state == ConnectivityStateReady {
-				ac.updateConnectivityState(ConnectivityStateIdle, nil)
+				ac.updateConnectivityState(ConnectivityStateIdle)
 			}
 		})
 		ac.mu.Unlock()
-		// close(onCloseCalled)
 		reconnect.Fire()
 	}
 
@@ -302,11 +300,15 @@ func (ac *addrConn) teardown() {
 		return
 	}
 
+	ac.updateConnectivityState(ConnectivityStateShutdown)
+
 	curTr := ac.transport
 	ac.transport = nil
 
 	ac.cancel()
-	curTr.Close()
+	if curTr != nil {
+		curTr.Close()
+	}
 
 	ac.mu.Unlock()
 }

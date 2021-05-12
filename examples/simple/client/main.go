@@ -37,14 +37,14 @@ func main() {
 		panic(err)
 	}
 
-	conn, err := wsrpc.Dial("127.0.0.1:1337", wsrpc.WithTransportCreds(privKey, staticServerPubKey))
+	conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, staticServerPubKey))
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer conn.Close()
 
 	go writeClientWS(conn)
-	conn.RegisterHandler(readHandler)
+	conn.RegisterReadHandler(readHandler)
 
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -61,7 +61,7 @@ func main() {
 
 func writeClientWS(c *wsrpc.ClientConn) {
 	for {
-		err := c.Send("Ping")
+		err := c.Send([]byte("Ping"))
 		if err != nil {
 			log.Printf("[MAIN] Some error ocurred pinging: %v", err)
 		} else {
