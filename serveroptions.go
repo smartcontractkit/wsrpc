@@ -37,7 +37,7 @@ func (fdo *funcServerOption) apply(do *serverOptions) {
 }
 
 // Creds returns a ServerOption that sets credentials for server connections.
-func Creds(privKey ed25519.PrivateKey, clientIdentities map[[ed25519.PublicKeySize]byte]string) ServerOption {
+func Creds(privKey ed25519.PrivateKey, clientIdentities map[StaticSizePubKey]string) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		// Generate the TLS config for the client
 		config := newServerTLSConfig(privKey, clientIdentities)

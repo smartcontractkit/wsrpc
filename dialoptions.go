@@ -39,7 +39,7 @@ func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
 func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey [ed25519.PublicKeySize]byte) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		// Generate the TLS config for the client
-		config := newClientTLSConfig(privKey, map[[ed25519.PublicKeySize]byte]string{
+		config := newClientTLSConfig(privKey, map[StaticSizePubKey]string{
 			serverPubKey: "server",
 		})
 

@@ -11,7 +11,9 @@ import (
 	"math/big"
 )
 
-func newServerTLSConfig(priv ed25519.PrivateKey, clientIdentities map[[32]byte]string) tls.Config {
+type StaticSizePubKey [ed25519.PublicKeySize]byte
+
+func newServerTLSConfig(priv ed25519.PrivateKey, clientIdentities map[StaticSizePubKey]string) tls.Config {
 	cert := newMinimalX509CertFromPrivateKey(priv)
 
 	return tls.Config{
@@ -29,7 +31,7 @@ func newServerTLSConfig(priv ed25519.PrivateKey, clientIdentities map[[32]byte]s
 	}
 }
 
-func newClientTLSConfig(priv ed25519.PrivateKey, serverIdentities map[[32]byte]string) tls.Config {
+func newClientTLSConfig(priv ed25519.PrivateKey, serverIdentities map[StaticSizePubKey]string) tls.Config {
 	cert := newMinimalX509CertFromPrivateKey(priv)
 
 	return tls.Config{
@@ -66,7 +68,7 @@ func newMinimalX509CertFromPrivateKey(sk ed25519.PrivateKey) tls.Certificate {
 	}
 }
 
-func verifyCertMatchesIdentity(identities map[[ed25519.PublicKeySize]byte]string) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+func verifyCertMatchesIdentity(identities map[StaticSizePubKey]string) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 	return func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 		if len(rawCerts) != 1 {
 			return fmt.Errorf("Required exactly one client certificate")
@@ -90,14 +92,14 @@ func verifyCertMatchesIdentity(identities map[[ed25519.PublicKeySize]byte]string
 	}
 }
 
-func pubKeyFromCert(cert *x509.Certificate) (pk [ed25519.PublicKeySize]byte, err error) {
+func pubKeyFromCert(cert *x509.Certificate) (pk StaticSizePubKey, err error) {
 	if cert.PublicKeyAlgorithm != x509.Ed25519 {
 		return pk, fmt.Errorf("Require ed25519 public key")
 	}
 	return StaticallySizedEd25519PublicKey(cert.PublicKey)
 }
 
-func StaticallySizedEd25519PublicKey(publickey crypto.PublicKey) ([ed25519.PublicKeySize]byte, error) {
+func StaticallySizedEd25519PublicKey(publickey crypto.PublicKey) (StaticSizePubKey, error) {
 	var result [ed25519.PublicKeySize]byte
 
 	pkslice, ok := publickey.(ed25519.PublicKey)

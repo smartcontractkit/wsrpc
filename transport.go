@@ -4,6 +4,13 @@ import (
 	"crypto/tls"
 )
 
+type transportState int
+
+const (
+	reachable transportState = iota
+	closing
+)
+
 // TransportCredentials defines the TLS configuration for establishing a
 // connection
 type TransportCredentials struct {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/ed25519"
 	"encoding/hex"
 	"log"
 	"os"
@@ -31,17 +30,14 @@ func main() {
 	privKey := make([]byte, hex.DecodedLen(len(client.PrivKey)))
 	hex.Decode(privKey, []byte(client.PrivKey))
 
-	serverPubKey := make([]byte, ed25519.PublicKeySize)
-	hex.Decode(serverPubKey, []byte(keys.ServerPubKey))
+	serverPubKey := keys.FromHex(keys.ServerPubKey)
 
-	// Copy the pub key into a statically sized byte array
-	var pubStaticServer [ed25519.PublicKeySize]byte
-	if ed25519.PublicKeySize != copy(pubStaticServer[:], serverPubKey) {
-		// assertion
-		panic("copying public key failed")
+	staticServerPubKey, err := keys.ToStaticSizedBytes(serverPubKey)
+	if err != nil {
+		panic(err)
 	}
 
-	conn, err := wsrpc.Dial("127.0.0.1:1337", wsrpc.WithTransportCreds(privKey, pubStaticServer))
+	conn, err := wsrpc.Dial("127.0.0.1:1337", wsrpc.WithTransportCreds(privKey, staticServerPubKey))
 	if err != nil {
 		log.Fatalln(err)
 	}

@@ -119,6 +119,7 @@ func (c *WebsocketClient) Read() <-chan []byte {
 // this goroutine.
 func (c *WebsocketClient) readPump() {
 	defer func() {
+		c.onClose()
 		c.cancel()
 	}()
 	// Put this back in with confiugration

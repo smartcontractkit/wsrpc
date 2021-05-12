@@ -4,7 +4,9 @@ package wsrpc
 
 import (
 	"crypto/ed25519"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -19,16 +21,19 @@ type Server struct {
 	mu sync.RWMutex
 
 	opts serverOptions
-	// Inbound messages from the clients.
-	broadcast chan []byte
 	// Holds a list of the open connections mapped to a buffered channel of
 	// outbound messages.
-	conns map[[ed25519.PublicKeySize]byte]ServerTransport
+	conns map[StaticSizePubKey]ServerTransport
 	// Parameters for upgrading a websocket connection
 	upgrader websocket.Upgrader
 
+	// Signals a quit event when the server wants to quit
+	quit *Event
+	// Signals a done event once the server has finished shutting down
+	done *Event
+
 	// readFn contains the registered handler for reading messages
-	readFn func(pubKey [ed25519.PublicKeySize]byte, message []byte)
+	readFn func(pubKey StaticSizePubKey, message []byte)
 }
 
 func NewServer(opt ...ServerOption) *Server {
@@ -43,8 +48,9 @@ func NewServer(opt ...ServerOption) *Server {
 			ReadBufferSize:  opts.readBufferSize,
 			WriteBufferSize: opts.writeBufferSize,
 		},
-		conns:     map[[ed25519.PublicKeySize]byte]ServerTransport{},
-		broadcast: make(chan []byte),
+		conns: map[StaticSizePubKey]ServerTransport{},
+		quit:  NewEvent(),
+		done:  NewEvent(),
 	}
 
 	return s
@@ -55,59 +61,66 @@ func (s *Server) Serve(lis net.Listener) {
 		TLSConfig: s.opts.creds.Config,
 	}
 	http.HandleFunc("/", s.wshandler)
-	httpsrv.ServeTLS(lis, "", "")
+	go httpsrv.ServeTLS(lis, "", "")
+	defer httpsrv.Close()
+
+	<-s.done.Done()
 }
 
 func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
+	// Do not establish a new connection if quit has already been fired
+	if s.quit.HasFired() {
+		return
+	}
+
 	log.Println("[Server] Establishing Websocket connection")
 
-	// Ensure there is only a single connection per public key
-	pk, err := pubKeyFromCert(r.TLS.PeerCertificates[0])
+	pubKey, err := s.ensureSingleClientConnection(r.TLS.PeerCertificates[0])
 	if err != nil {
 		log.Print("[Server] error: ", err)
 		return
 	}
 
-	if _, ok := s.conns[pk]; ok {
-		log.Println("[Server] error: Only one connection allowed per client")
-
-		return
-	}
-
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade:", err)
+		log.Print("[Server] error: upgrade", err)
 		return
 	}
 
-	config := &ServerConfig{}
+	// A signal channel to close down running go routines (i.e receiving
+	// messages) and then ensures the handler to returns
+	done := make(chan struct{})
 
+	config := &ServerConfig{}
 	onClose := func() {
 		s.mu.Lock()
-		delete(s.conns, pk)
+		delete(s.conns, pubKey)
+
+		close(done)
 		s.mu.Unlock()
 	}
 
 	tr := NewWebsocketServer(conn, config, onClose)
 
-	defer tr.Close()
-
 	// Register the transport against the public key
 	s.mu.Lock()
-	s.conns[pk] = tr
+	s.conns[pubKey] = tr
 	s.mu.Unlock()
 
 	// Start the reader
 	// TODO - Make this more generic so that closing the transport will kill the read
-	done := make(chan struct{})
-	go s.startRead(pk, done)
-	defer close(done)
+	go s.startRead(pubKey, done)
 
-	select {}
+	select {
+	case <-done:
+		log.Println("Closing Handler: Connection dropped")
+	case <-s.quit.Done():
+		log.Println("Closing Handler: Shutdown")
+	}
 }
 
 func (s *Server) Send(pub [32]byte, msg []byte) error {
-	// Find the transport
+	// Find the transport matching the public key
 	tr, ok := s.conns[pub]
 	if !ok {
 		return ErrNotConnected
@@ -120,6 +133,10 @@ func (s *Server) Send(pub [32]byte, msg []byte) error {
 
 // TODO - Rename
 func (s *Server) startRead(pubKey [ed25519.PublicKeySize]byte, done <-chan struct{}) {
+	defer func() {
+		fmt.Println("----> [Server] Reading goroutine closed")
+	}()
+
 	s.mu.Lock()
 	tr, ok := s.conns[pubKey]
 	s.mu.Unlock()
@@ -140,6 +157,44 @@ func (s *Server) startRead(pubKey [ed25519.PublicKeySize]byte, done <-chan struc
 	}
 }
 
-func (s *Server) RegisterReadHandler(handler func(pubKey [ed25519.PublicKeySize]byte, message []byte)) {
+// RegisterReadHandler registers a handler for incoming messages from the
+// transport.
+func (s *Server) RegisterReadHandler(handler func(pubKey StaticSizePubKey, message []byte)) {
 	s.readFn = handler
+}
+
+// Stop stops the gRPC server. It immediately closes all open
+// connections and listeners.
+func (s *Server) Stop() {
+	log.Println("[Server] Stopping Server")
+	s.quit.Fire()
+	defer func() {
+		s.done.Fire()
+	}()
+
+	s.mu.Lock()
+	conns := s.conns
+	s.conns = nil
+	s.mu.Unlock()
+
+	for _, conn := range conns {
+		conn.Close()
+	}
+}
+
+// Ensure there is only a single connection per public key by checking the
+// certificate's public key against the list of registered connections
+func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.PublicKeySize]byte, error) {
+	pubKey, err := pubKeyFromCert(cert)
+	if err != nil {
+		return pubKey, errors.New("could not extracting public key from certificate")
+	}
+
+	s.mu.Lock()
+	if _, ok := s.conns[pubKey]; ok {
+		return pubKey, errors.New("Only one connection allowed per client")
+	}
+	s.mu.Unlock()
+
+	return pubKey, nil
 }

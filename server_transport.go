@@ -3,6 +3,7 @@ package wsrpc
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -14,22 +15,23 @@ type ServerTransport interface {
 	// handlers will be terminated asynchronously.
 	Close() error
 
-	// Write sends a message to the stream.
-	Write(msg []byte) error
-
 	// Read reads a message from the stream
 	Read() <-chan []byte
+
+	// Write sends a message to the stream.
+	Write(msg []byte) error
 }
 
-type ServerConfig struct {
-	// WriteBufferSize int
-	// ReadBufferSize  int
-}
+type ServerConfig struct{}
 
 type WebsocketServer struct {
+	mu sync.Mutex
+
 	conn *websocket.Conn // underlying communication channel
 
-	onClose func()
+	state transportState
+
+	onClose func() // Callback function called when the transport is closed
 
 	// Communication channels
 	write chan []byte
@@ -51,10 +53,42 @@ func NewWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func())
 	return s
 }
 
+// Close closes the websocket connection and cleans up pump goroutines. Notifies
+// the caller with the onClose callback.
 func (s *WebsocketServer) Close() error {
-	return s.conn.Close()
+	s.mu.Lock()
+	// Make sure we only Close once.
+	if s.state == closing {
+		s.mu.Unlock()
+		return nil
+	}
+
+	log.Println("[Transport] Closing transport")
+
+	// Close the websocket conn
+	err := s.conn.Close()
+	if err != nil {
+		return nil
+	}
+
+	// Close the write channel to stop the go routine
+	close(s.write)
+
+	s.state = closing
+
+	// Notify the caller that the underlying conn is closed
+	s.onClose()
+	s.mu.Unlock()
+
+	return err
 }
 
+// Read returns a channel which provides the messages as they are read
+func (c *WebsocketServer) Read() <-chan []byte {
+	return c.read
+}
+
+// Write writes a message the websocket connection
 func (s *WebsocketServer) Write(msg []byte) error {
 	// Send the message to the channel
 	s.write <- msg
@@ -68,11 +102,9 @@ func (s *WebsocketServer) Write(msg []byte) error {
 // server ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
 func (s *WebsocketServer) writePump() {
-	// ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		// ticker.Stop()
-		s.conn.Close()
-		s.onClose()
+		fmt.Println("----> [Transport] Closing write pump goroutine")
+		s.Close()
 	}()
 
 	for {
@@ -91,17 +123,8 @@ func (s *WebsocketServer) writePump() {
 
 				return
 			}
-			// case <-ticker.C:
-			// 	conn.SetWriteDeadline(time.Now().Add(writeWait))
-			// 	if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-			// 		return
-			// 	}
 		}
 	}
-}
-
-func (c *WebsocketServer) Read() <-chan []byte {
-	return c.read
 }
 
 // readPump pumps messages from the websocket connection.
@@ -111,17 +134,12 @@ func (c *WebsocketServer) Read() <-chan []byte {
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
 	defer func() {
-		s.conn.Close()
-		s.onClose()
+		s.Close()
+		fmt.Println("----> [Transport]  Closing read pump goroutine")
 	}()
+
 	// c.conn.SetReadLimit(maxMessageSize)
 	// c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	// conn.SetPongHandler(func(string) error {
-	// 	fmt.Println("Received Ping")
-	// 	conn.SetReadDeadline(time.Now().Add(pongWait))
-	// 	return nil
-	// })
-
 	s.conn.SetPingHandler(func(string) error {
 		s.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
@@ -129,8 +147,9 @@ func (s *WebsocketServer) readPump() {
 
 	for {
 		_, message, err := s.conn.ReadMessage()
+		// An error is provided when the websocket connection is closed,
+		// allowing us to clean up the goroutine.
 		if err != nil {
-			fmt.Println("Closing", err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("[Transport] error: %v", err)
 			}
