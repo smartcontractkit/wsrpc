@@ -81,6 +81,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Upgrade the websocket connection
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("[Server] error: upgrade", err)
@@ -100,6 +101,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 	}
 
+	// Initialize the transport
 	tr := NewWebsocketServer(conn, config, onClose)
 
 	// Register the transport against the public key
@@ -107,9 +109,8 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	s.conns[pubKey] = tr
 	s.mu.Unlock()
 
-	// Start the reader
-	// TODO - Make this more generic so that closing the transport will kill the read
-	go s.startRead(pubKey, done)
+	// Start the reader handler
+	go s.handleRead(pubKey, done)
 
 	select {
 	case <-done:
@@ -119,6 +120,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Send writes the message to the connection which matches the public key.
 func (s *Server) Send(pub [32]byte, msg []byte) error {
 	// Find the transport matching the public key
 	tr, ok := s.conns[pub]
@@ -131,8 +133,9 @@ func (s *Server) Send(pub [32]byte, msg []byte) error {
 	return nil
 }
 
-// TODO - Rename
-func (s *Server) startRead(pubKey [ed25519.PublicKeySize]byte, done <-chan struct{}) {
+// handleRead listens to the transport read channel and passes the message to the
+// readFn handler.
+func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan struct{}) {
 	defer func() {
 		fmt.Println("----> [Server] Reading goroutine closed")
 	}()

@@ -11,17 +11,17 @@ import (
 
 type ServerTransport interface {
 	// Close tears down the transport. Once it is called, the transport
-	// should not be accessed any more. All the pending streams and their
-	// handlers will be terminated asynchronously.
+	// should not be accessed any more.
 	Close() error
 
-	// Read reads a message from the stream
+	// Read reads a message from the stream.
 	Read() <-chan []byte
 
 	// Write sends a message to the stream.
 	Write(msg []byte) error
 }
 
+// ServerConfig consists of all the configurations to establish a server transport.
 type ServerConfig struct{}
 
 type WebsocketServer struct {
@@ -65,6 +65,8 @@ func (s *WebsocketServer) Close() error {
 
 	log.Println("[Transport] Closing transport")
 
+	s.state = closing
+
 	// Close the websocket conn
 	err := s.conn.Close()
 	if err != nil {
@@ -73,8 +75,6 @@ func (s *WebsocketServer) Close() error {
 
 	// Close the write channel to stop the go routine
 	close(s.write)
-
-	s.state = closing
 
 	// Notify the caller that the underlying conn is closed
 	s.onClose()
@@ -135,11 +135,9 @@ func (s *WebsocketServer) writePump() {
 func (s *WebsocketServer) readPump() {
 	defer func() {
 		s.Close()
-		fmt.Println("----> [Transport]  Closing read pump goroutine")
+		fmt.Println("----> [Transport] Closing read pump goroutine")
 	}()
 
-	// c.conn.SetReadLimit(maxMessageSize)
-	// c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	s.conn.SetPingHandler(func(string) error {
 		s.conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil

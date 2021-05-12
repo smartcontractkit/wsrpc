@@ -49,9 +49,6 @@ func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey [ed25519.Public
 
 func defaultDialOptions() dialOptions {
 	return dialOptions{
-		copts: ConnectOptions{
-			// 	WriteBufferSize: defaultWriteBufSize,
-			// 	ReadBufferSize:  defaultReadBufSize,
-		},
+		copts: ConnectOptions{},
 	}
 }

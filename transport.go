@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 )
 
+// state of transport
 type transportState int
 
 const (

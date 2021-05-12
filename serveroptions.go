@@ -63,6 +63,6 @@ func ReadBufferSize(s int) ServerOption {
 }
 
 var defaultServerOptions = serverOptions{
-	writeBufferSize: defaultWriteBufSize,
-	readBufferSize:  defaultReadBufSize,
+	writeBufferSize: 4096,
+	readBufferSize:  4096,
 }
