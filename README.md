@@ -16,6 +16,6 @@ You can run the example in `examples/simple` by:
 
 ## TODO 
 
-[] Many Many Tests
-[] Use Protobufs as the message format
-[] Handle Read/Write Limits of the websocket connection
+[ ] Many Many Tests
+[ ] Use Protobufs as the message format
+[ ] Handle Read/Write Limits of the websocket connection

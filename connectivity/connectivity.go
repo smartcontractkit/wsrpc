@@ -1,25 +1,24 @@
 // Package connectivity defines connectivity semantics.
-package wsrpc
+package connectivity
 
 import (
 	"log"
 )
 
 // State indicates the state of connectivity.
-// It can be the state of a ClientConn or SubConn.
-type ConnectivityState int
+type State int
 
-func (s ConnectivityState) String() string {
+func (s State) String() string {
 	switch s {
-	case ConnectivityStateIdle:
+	case Idle:
 		return "IDLE"
-	case ConnectivityStateConnecting:
+	case Connecting:
 		return "CONNECTING"
-	case ConnectivityStateReady:
+	case Ready:
 		return "READY"
-	case ConnectivityStateTransientFailure:
+	case TransientFailure:
 		return "TRANSIENT_FAILURE"
-	case ConnectivityStateShutdown:
+	case Shutdown:
 		return "SHUTDOWN"
 	default:
 		log.Printf("unknown connectivity state: %d", s)
@@ -29,13 +28,13 @@ func (s ConnectivityState) String() string {
 
 const (
 	// Idle indicates the ClientConn is idle.
-	ConnectivityStateIdle ConnectivityState = iota
+	Idle State = iota
 	// Connecting indicates the ClientConn is connecting.
-	ConnectivityStateConnecting
+	Connecting
 	// Ready indicates the ClientConn is ready for work.
-	ConnectivityStateReady
+	Ready
 	// TransientFailure indicates the ClientConn has seen a failure but expects to recover.
-	ConnectivityStateTransientFailure
+	TransientFailure
 	// Shutdown indicates the ClientConn has started shutting down.
-	ConnectivityStateShutdown
+	Shutdown
 )

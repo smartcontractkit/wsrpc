@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 )
 
@@ -22,7 +23,7 @@ type ClientConn struct {
 	mu  sync.RWMutex
 
 	target string
-	csCh   <-chan ConnectivityState
+	csCh   <-chan connectivity.State
 
 	dopts dialOptions
 	conn  *addrConn
@@ -60,9 +61,9 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 
 // newAddrConn creates an addrConn for the addr and sets it to cc.conn.
 func (cc *ClientConn) newAddrConn(addr string) (*addrConn, error) {
-	csCh := make(chan ConnectivityState)
+	csCh := make(chan connectivity.State)
 	ac := &addrConn{
-		state:   ConnectivityStateIdle,
+		state:   connectivity.Idle,
 		stateCh: csCh,
 		cc:      cc,
 		addr:    addr,
@@ -88,7 +89,7 @@ func (cc *ClientConn) listenForRead() {
 
 		var done chan struct{}
 
-		if s == ConnectivityStateReady {
+		if s == connectivity.Ready {
 			done := make(chan struct{})
 			go cc.handleRead(done)
 		} else {
@@ -125,7 +126,7 @@ func (cc *ClientConn) Close() {
 
 // Send writes the message to the connection
 func (cc *ClientConn) Send(msg []byte) error {
-	if cc.conn.state != ConnectivityStateReady {
+	if cc.conn.state != connectivity.Ready {
 		return errors.New("connection is not ready")
 	}
 
@@ -158,28 +159,28 @@ type addrConn struct {
 	mu sync.Mutex
 
 	// Use updateConnectivityState for updating addrConn's connectivity state.
-	state ConnectivityState
+	state connectivity.State
 	// Notifies this channel when the ConnectivityState changes
-	stateCh chan ConnectivityState
+	stateCh chan connectivity.State
 }
 
 // connect starts creating a transport.
 // It does nothing if the ac is not IDLE.
 func (ac *addrConn) connect() error {
 	ac.mu.Lock()
-	if ac.state == ConnectivityStateShutdown {
+	if ac.state == connectivity.Shutdown {
 		ac.mu.Unlock()
 		return errConnClosing
 	}
 
-	if ac.state != ConnectivityStateIdle {
+	if ac.state != connectivity.Idle {
 		ac.mu.Unlock()
 		return nil
 	}
 
 	// Update connectivity state within the lock to prevent subsequent or
 	// concurrent calls from resetting the transport more than once.
-	ac.updateConnectivityState(ConnectivityStateConnecting)
+	ac.updateConnectivityState(connectivity.Connecting)
 	ac.mu.Unlock()
 
 	// Start a goroutine connecting to the server asynchronously.
@@ -189,7 +190,7 @@ func (ac *addrConn) connect() error {
 }
 
 // Note: this requires a lock on ac.mu.
-func (ac *addrConn) updateConnectivityState(s ConnectivityState) {
+func (ac *addrConn) updateConnectivityState(s connectivity.State) {
 	if ac.state == s {
 		return
 	}
@@ -203,7 +204,7 @@ func (ac *addrConn) updateConnectivityState(s ConnectivityState) {
 func (ac *addrConn) resetTransport() {
 	for i := 0; ; i++ {
 		ac.mu.Lock()
-		if ac.state == ConnectivityStateShutdown {
+		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
 			return
 		}
@@ -219,18 +220,18 @@ func (ac *addrConn) resetTransport() {
 			curTr.Close()
 		}
 
-		ac.updateConnectivityState(ConnectivityStateConnecting)
+		ac.updateConnectivityState(connectivity.Connecting)
 		ac.mu.Unlock()
 
 		newTr, reconnect, err := ac.createTransport(addr, copts)
 		if err != nil {
 			// After connection failure, the addrConn enters TRANSIENT_FAILURE.
 			ac.mu.Lock()
-			if ac.state == ConnectivityStateShutdown {
+			if ac.state == connectivity.Shutdown {
 				ac.mu.Unlock()
 				return
 			}
-			ac.updateConnectivityState(ConnectivityStateTransientFailure)
+			ac.updateConnectivityState(connectivity.TransientFailure)
 			ac.mu.Unlock()
 
 			// Backoff.
@@ -248,7 +249,7 @@ func (ac *addrConn) resetTransport() {
 
 		// Close the transport early if in a SHUTDOWN state
 		ac.mu.Lock()
-		if ac.state == ConnectivityStateShutdown {
+		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
 			newTr.Close()
 			return
@@ -256,7 +257,7 @@ func (ac *addrConn) resetTransport() {
 		ac.transport = newTr
 		ac.dopts.bs.Reset()
 
-		ac.updateConnectivityState(ConnectivityStateReady)
+		ac.updateConnectivityState(connectivity.Ready)
 
 		ac.mu.Unlock()
 
@@ -278,8 +279,8 @@ func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTr
 	onClose := func() {
 		ac.mu.Lock()
 		once.Do(func() {
-			if ac.state == ConnectivityStateReady {
-				ac.updateConnectivityState(ConnectivityStateIdle)
+			if ac.state == connectivity.Ready {
+				ac.updateConnectivityState(connectivity.Idle)
 			}
 		})
 		ac.mu.Unlock()
@@ -295,12 +296,12 @@ func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTr
 func (ac *addrConn) teardown() {
 	ac.mu.Lock()
 
-	if ac.state == ConnectivityStateShutdown {
+	if ac.state == connectivity.Shutdown {
 		ac.mu.Unlock()
 		return
 	}
 
-	ac.updateConnectivityState(ConnectivityStateShutdown)
+	ac.updateConnectivityState(connectivity.Shutdown)
 
 	curTr := ac.transport
 	ac.transport = nil
