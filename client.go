@@ -3,6 +3,7 @@ package wsrpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -214,12 +215,7 @@ func (ac *addrConn) resetTransport() {
 		addr := ac.addr
 		copts := ac.dopts.copts
 
-		// Close the current transport
-		curTr := ac.transport
 		ac.transport = nil
-		if curTr != nil {
-			curTr.Close()
-		}
 
 		ac.updateConnectivityState(connectivity.Connecting)
 		ac.mu.Unlock()
@@ -244,6 +240,7 @@ func (ac *addrConn) resetTransport() {
 			case <-timer.C:
 				// NOOP - This falls through to continue to retry connecting
 			case <-ac.ctx.Done():
+				fmt.Println("Context Cancelled")
 				timer.Stop()
 				return
 			}
@@ -280,6 +277,7 @@ func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTr
 
 	// Called when the transport closes
 	onClose := func() {
+		fmt.Println("OnCall Closed")
 		ac.mu.Lock()
 		once.Do(func() {
 			if ac.state == connectivity.Ready {

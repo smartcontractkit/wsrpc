@@ -148,6 +148,7 @@ func (s *WebsocketServer) readPump() {
 		// An error is provided when the websocket connection is closed,
 		// allowing us to clean up the goroutine.
 		if err != nil {
+			fmt.Println("---------->", err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("[Transport] error: %v", err)
 			}
