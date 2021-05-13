@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
 )
 
 var ErrNotConnected = errors.New("client not connected")
@@ -27,9 +28,9 @@ type Server struct {
 	upgrader websocket.Upgrader
 
 	// Signals a quit event when the server wants to quit
-	quit *Event
+	quit *wsrpcsync.Event
 	// Signals a done event once the server has finished shutting down
-	done *Event
+	done *wsrpcsync.Event
 
 	// readFn contains the registered handler for reading messages
 	readFn func(pubKey StaticSizePubKey, message []byte)
@@ -48,8 +49,8 @@ func NewServer(opt ...ServerOption) *Server {
 			WriteBufferSize: opts.writeBufferSize,
 		},
 		conns: map[StaticSizePubKey]ServerTransport{},
-		quit:  NewEvent(),
-		done:  NewEvent(),
+		quit:  wsrpcsync.NewEvent(),
+		done:  wsrpcsync.NewEvent(),
 	}
 
 	return s

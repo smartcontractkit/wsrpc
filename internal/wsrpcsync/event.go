@@ -1,4 +1,9 @@
-package wsrpc
+// Package wsrpcsync implements additional synchronization primitives built upon
+// the sync package.
+//
+// This has been taken from GRPC
+// https://github.com/grpc/grpc-go/blob/master/internal/grpcsync/event.go
+package wsrpcsync
 
 import (
 	"sync"

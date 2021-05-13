@@ -9,6 +9,7 @@ import (
 
 	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
+	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
 )
 
 var (
@@ -271,8 +272,8 @@ func (ac *addrConn) resetTransport() {
 // it returns an error which used to detect whether a retry is necessary. This
 // also returns a reconnect event which is fired when the transport closes due
 // to issues with the underlying connection.
-func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTransport, *Event, error) {
-	reconnect := NewEvent()
+func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTransport, *wsrpcsync.Event, error) {
+	reconnect := wsrpcsync.NewEvent()
 	once := sync.Once{}
 
 	// Called when the transport closes
