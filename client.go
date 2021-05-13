@@ -226,6 +226,8 @@ func (ac *addrConn) resetTransport() {
 
 		newTr, reconnect, err := ac.createTransport(addr, copts)
 		if err != nil {
+			log.Println(err)
+
 			// After connection failure, the addrConn enters TRANSIENT_FAILURE.
 			ac.mu.Lock()
 			if ac.state == connectivity.Shutdown {

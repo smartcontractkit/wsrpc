@@ -2,7 +2,9 @@ package wsrpc
 
 import (
 	"crypto/ed25519"
+	"log"
 
+	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 )
 
@@ -36,14 +38,16 @@ func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
 
 // WithTransportCredentials returns a DialOption which configures a connection
 // level security credentials (e.g., TLS/SSL).
-func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey [ed25519.PublicKeySize]byte) DialOption {
+func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		// Generate the TLS config for the client
-		config := newClientTLSConfig(privKey, map[StaticSizePubKey]string{
-			serverPubKey: "server",
-		})
+		config, err := credentials.NewClientTLSConfig(privKey, []ed25519.PublicKey{serverPubKey})
+		if err != nil {
+			log.Println(err)
+			return
+		}
 
-		o.copts.TransportCredentials = NewTransportCredentials(&config)
+		o.copts.TransportCredentials = credentials.NewTLS(config)
 	})
 }
 

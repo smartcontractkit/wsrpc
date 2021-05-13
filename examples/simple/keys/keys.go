@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/smartcontractkit/wsrpc"
+	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
 type Client struct {
@@ -35,8 +35,7 @@ var Clients = []Client{
 	},
 	// This user is not registered on the server
 	{
-		Name: "Charlie",
-
+		Name:               "Charlie",
 		PubKey:             "235750320bb723760add5969b3c51342e829542d399f82b07a0458092c3960af",
 		PrivKey:            "84206ddc52ad6f83569ed409829f194db1d3bbb65e7c04db5ca098d1f020ee47235750320bb723760add5969b3c51342e829542d399f82b07a0458092c3960af",
 		RegisteredOnServer: false,
@@ -52,8 +51,8 @@ func FromHex(keyHex string) []byte {
 
 // ToStaticSizedBytes convert bytes to a statically sized byte array of the
 // of ed25519.PublicKeySize
-func ToStaticSizedBytes(b []byte) (wsrpc.StaticSizePubKey, error) {
-	var sb wsrpc.StaticSizePubKey
+func ToStaticSizedBytes(b []byte) (credentials.StaticSizedPublicKey, error) {
+	var sb credentials.StaticSizedPublicKey
 
 	if ed25519.PublicKeySize != copy(sb[:], b) {
 		return sb, errors.New("copying public key failed")

@@ -2,6 +2,9 @@ package wsrpc
 
 import (
 	"crypto/ed25519"
+	"log"
+
+	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
 // A ServerOption sets options such as credentials, codec and keepalive parameters, etc.
@@ -15,7 +18,7 @@ type serverOptions struct {
 	readBufferSize  int
 
 	// Transport Credentials
-	creds            TransportCredentials
+	creds            credentials.TransportCredentials
 	privKey          ed25519.PrivateKey
 	clientIdentities map[[ed25519.PublicKeySize]byte]string
 }
@@ -37,12 +40,16 @@ func (fdo *funcServerOption) apply(do *serverOptions) {
 }
 
 // Creds returns a ServerOption that sets credentials for server connections.
-func Creds(privKey ed25519.PrivateKey, clientIdentities map[StaticSizePubKey]string) ServerOption {
+func Creds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
 		// Generate the TLS config for the client
-		config := newServerTLSConfig(privKey, clientIdentities)
+		config, err := credentials.NewServerTLSConfig(privKey, pubKeys)
+		if err != nil {
+			log.Println(err)
+			return
+		}
 
-		o.creds = NewTransportCredentials(&config)
+		o.creds = credentials.NewTLS(config)
 	})
 }
 

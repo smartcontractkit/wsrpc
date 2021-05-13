@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"log"
 	"os"
 	"os/signal"
@@ -26,18 +25,10 @@ func main() {
 	}
 
 	client := keys.Clients[cidx]
-
-	privKey := make([]byte, hex.DecodedLen(len(client.PrivKey)))
-	hex.Decode(privKey, []byte(client.PrivKey))
-
+	privKey := keys.FromHex(client.PrivKey)
 	serverPubKey := keys.FromHex(keys.ServerPubKey)
 
-	staticServerPubKey, err := keys.ToStaticSizedBytes(serverPubKey)
-	if err != nil {
-		panic(err)
-	}
-
-	conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, staticServerPubKey))
+	conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, serverPubKey))
 	if err != nil {
 		log.Fatalln(err)
 	}

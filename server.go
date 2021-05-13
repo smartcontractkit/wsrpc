@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
+	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
 )
 
@@ -23,7 +24,7 @@ type Server struct {
 	opts serverOptions
 	// Holds a list of the open connections mapped to a buffered channel of
 	// outbound messages.
-	conns map[StaticSizePubKey]ServerTransport
+	conns map[credentials.StaticSizedPublicKey]ServerTransport
 	// Parameters for upgrading a websocket connection
 	upgrader websocket.Upgrader
 
@@ -33,7 +34,7 @@ type Server struct {
 	done *wsrpcsync.Event
 
 	// readFn contains the registered handler for reading messages
-	readFn func(pubKey StaticSizePubKey, message []byte)
+	readFn func(pubKey credentials.StaticSizedPublicKey, message []byte)
 }
 
 func NewServer(opt ...ServerOption) *Server {
@@ -48,7 +49,7 @@ func NewServer(opt ...ServerOption) *Server {
 			ReadBufferSize:  opts.readBufferSize,
 			WriteBufferSize: opts.writeBufferSize,
 		},
-		conns: map[StaticSizePubKey]ServerTransport{},
+		conns: map[credentials.StaticSizedPublicKey]ServerTransport{},
 		quit:  wsrpcsync.NewEvent(),
 		done:  wsrpcsync.NewEvent(),
 	}
@@ -158,7 +159,7 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 
 // RegisterReadHandler registers a handler for incoming messages from the
 // transport.
-func (s *Server) RegisterReadHandler(handler func(pubKey StaticSizePubKey, message []byte)) {
+func (s *Server) RegisterReadHandler(handler func(pubKey credentials.StaticSizedPublicKey, message []byte)) {
 	s.readFn = handler
 }
 
@@ -184,7 +185,7 @@ func (s *Server) Stop() {
 // Ensure there is only a single connection per public key by checking the
 // certificate's public key against the list of registered connections
 func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.PublicKeySize]byte, error) {
-	pubKey, err := pubKeyFromCert(cert)
+	pubKey, err := credentials.PubKeyFromCert(cert)
 	if err != nil {
 		return pubKey, errors.New("could not extracting public key from certificate")
 	}

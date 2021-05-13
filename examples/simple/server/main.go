@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"log"
 	"net"
@@ -10,13 +11,15 @@ import (
 	"time"
 
 	"github.com/smartcontractkit/wsrpc"
+	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/examples/simple/keys"
 )
 
 func main() {
 	privKey := keys.FromHex(keys.ServerPrivKey)
 
-	clientIdentities := map[wsrpc.StaticSizePubKey]string{}
+	pubKeys := []ed25519.PublicKey{}
+	clientIdentities := map[credentials.StaticSizedPublicKey]string{}
 	for _, c := range keys.Clients {
 		if c.RegisteredOnServer {
 			clientPubKey := keys.FromHex(c.PubKey)
@@ -26,6 +29,7 @@ func main() {
 				panic(err)
 			}
 
+			pubKeys = append(pubKeys, clientPubKey)
 			clientIdentities[staticClientPubKey] = c.Name
 		}
 	}
@@ -34,9 +38,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("[MAIN] failed to listen: %v", err)
 	}
-	s := wsrpc.NewServer(wsrpc.Creds(privKey, clientIdentities))
+	s := wsrpc.NewServer(wsrpc.Creds(privKey, pubKeys))
 	// Register the handler
-	handler := func(pubKey wsrpc.StaticSizePubKey, msg []byte) {
+	handler := func(pubKey credentials.StaticSizedPublicKey, msg []byte) {
 		name := clientIdentities[pubKey]
 
 		log.Printf("[MAIN] recv: %s from %s", string(msg), name)
@@ -69,7 +73,7 @@ func receiveMessages(ch <-chan []byte) {
 
 // Sends messages to all registered clients. Clients may not have an active
 // connection.
-func sendMessages(s *wsrpc.Server, clientIdentities map[wsrpc.StaticSizePubKey]string) {
+func sendMessages(s *wsrpc.Server, clientIdentities map[credentials.StaticSizedPublicKey]string) {
 	for {
 		for pubKey, name := range clientIdentities {
 			err := s.Send(pubKey, []byte("Pong"))

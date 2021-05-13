@@ -8,13 +8,14 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
 // ConnectOptions covers all relevant options for communicating with the server.
 type ConnectOptions struct {
 	// TransportCredentials stores the Authenticator required to setup a client
-	// connection. Only one of TransportCredentials and CredsBundle is non-nil.
-	TransportCredentials TransportCredentials
+	// connection.
+	TransportCredentials credentials.TransportCredentials
 }
 
 type ClientTransport interface {
@@ -60,7 +61,7 @@ func NewWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 	url := fmt.Sprintf("wss://%s", addr)
 	conn, _, err := d.Dial(url, http.Header{})
 	if err != nil {
-		return nil, fmt.Errorf("[Transport] error while dialing %v", err)
+		return nil, fmt.Errorf("[Transport] error while dialing %w", err)
 	}
 
 	c := &WebsocketClient{
