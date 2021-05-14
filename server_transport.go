@@ -52,8 +52,7 @@ func NewWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func())
 		interrupt: make(chan struct{}),
 	}
 
-	go s.writePump()
-	go s.readPump()
+	go s.start()
 
 	return s
 }
