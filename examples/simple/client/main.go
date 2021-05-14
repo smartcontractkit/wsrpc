@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/smartcontractkit/wsrpc"
 	"github.com/smartcontractkit/wsrpc/examples/simple/keys"
+	"github.com/smartcontractkit/wsrpc/examples/simple/ping"
+	pb "github.com/smartcontractkit/wsrpc/examples/simple/ping"
 )
 
 func main() {
@@ -18,14 +22,12 @@ func main() {
 	}
 	// Run the client matching the array index
 	arg1 := os.Args[1]
-
 	cidx, err := strconv.Atoi(arg1)
 	if err != nil {
 		log.Fatalf("arg must be an int")
 	}
 
-	client := keys.Clients[cidx]
-	privKey := keys.FromHex(client.PrivKey)
+	privKey := keys.FromHex(keys.Clients[cidx].PrivKey)
 	serverPubKey := keys.FromHex(keys.ServerPubKey)
 
 	conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, serverPubKey))
@@ -34,8 +36,11 @@ func main() {
 	}
 	defer conn.Close()
 
-	go writeClientWS(conn)
-	conn.RegisterReadHandler(readHandler)
+	// Initialize a new wsrpc client
+	c := ping.NewPingClient(conn)
+
+	// Call the Ping method
+	go pingContinuously(c)
 
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -50,19 +55,16 @@ func main() {
 	<-done
 }
 
-func writeClientWS(c *wsrpc.ClientConn) {
+// pingContinuously sends a Ping RPC call to the server every 5 seconds
+func pingContinuously(client pb.PingClient) {
 	for {
-		err := c.Send([]byte("Ping"))
+		res, err := client.Ping(context.Background(), &pb.PingRequest{Body: "ping"})
 		if err != nil {
 			log.Printf("[MAIN] Some error ocurred pinging: %v", err)
 		} else {
-			log.Println("[MAIN] Sent: Ping")
+			fmt.Println("[MAIN] Response:", res.GetBody())
 		}
 
 		time.Sleep(5 * time.Second)
 	}
-}
-
-func readHandler(msg []byte) {
-	log.Printf("[MAIN] recv: %s", string(msg))
 }

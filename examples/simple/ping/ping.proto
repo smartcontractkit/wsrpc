@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option go_package = "github.com/smartcontractkit/wsrpc/examples/simple/ping";
+
+package ping;
+
+message PingRequest {
+    string body = 1;
+}
+
+message PingResponse {
+    string body = 1;
+}
