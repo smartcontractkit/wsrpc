@@ -36,15 +36,20 @@ type WebsocketServer struct {
 	// Communication channels
 	write chan []byte
 	read  chan []byte
+
+	done      chan struct{}
+	interrupt chan struct{}
 }
 
 // NewWebsocket server upgrades an HTTP connection to a websocket connection
 func NewWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) ServerTransport {
 	s := &WebsocketServer{
-		conn:    c,
-		onClose: onClose,
-		write:   make(chan []byte),
-		read:    make(chan []byte),
+		conn:      c,
+		onClose:   onClose,
+		write:     make(chan []byte),
+		read:      make(chan []byte),
+		done:      make(chan struct{}),
+		interrupt: make(chan struct{}),
 	}
 
 	go s.writePump()
@@ -67,20 +72,12 @@ func (s *WebsocketServer) Close() error {
 
 	s.state = closing
 
-	// Close the websocket conn
-	err := s.conn.Close()
-	if err != nil {
-		return nil
-	}
-
 	// Close the write channel to stop the go routine
-	close(s.write)
+	close(s.interrupt)
 
-	// Notify the caller that the underlying conn is closed
-	s.onClose()
 	s.mu.Unlock()
 
-	return err
+	return nil
 }
 
 // Read returns a channel which provides the messages as they are read
@@ -96,35 +93,16 @@ func (s *WebsocketServer) Write(msg []byte) error {
 	return nil
 }
 
-// writePump pumps messages from the server to the websocket connection.
 //
-// A goroutine running writePump is started for each connection. The
-// server ensures that there is at most one writer to a connection by
-// executing all writes from this goroutine.
-func (s *WebsocketServer) writePump() {
+func (s *WebsocketServer) start() {
 	defer func() {
-		fmt.Println("----> [Transport] Closing write pump goroutine")
 		s.Close()
+		s.onClose()
 	}()
 
-	for {
-		select {
-		case msg, ok := <-s.write:
-			s.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				// Closed the channel.
-				s.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
-
-			err := s.conn.WriteMessage(websocket.BinaryMessage, msg)
-			if err != nil {
-				log.Printf("Some error ocurred writing: %v", err)
-
-				return
-			}
-		}
-	}
+	// Set up reader
+	go s.readPump()
+	s.writePump()
 }
 
 // readPump pumps messages from the websocket connection.
@@ -134,8 +112,8 @@ func (s *WebsocketServer) writePump() {
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
 	defer func() {
-		s.Close()
 		fmt.Println("----> [Transport] Closing read pump goroutine")
+		defer close(s.done)
 	}()
 
 	s.conn.SetPingHandler(func(string) error {
@@ -148,13 +126,57 @@ func (s *WebsocketServer) readPump() {
 		// An error is provided when the websocket connection is closed,
 		// allowing us to clean up the goroutine.
 		if err != nil {
-			fmt.Println("---------->", err)
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("[Transport] error: %v", err)
 			}
 			break
 		}
-
 		s.read <- message
+	}
+}
+
+// writePump pumps messages from the server to the websocket connection.
+//
+// A goroutine running writePump is started for each connection. The
+// server ensures that there is at most one writer to a connection by
+// executing all writes from this goroutine.
+func (s *WebsocketServer) writePump() {
+	defer func() {
+		fmt.Println("----> [Transport] Closing write pump goroutine")
+	}()
+
+	for {
+		select {
+		case <-s.done:
+			// When the read detects a websocket closure, it will close the done
+			// channel so we can exit
+			return
+		case msg := <-s.write:
+			s.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			err := s.conn.WriteMessage(websocket.BinaryMessage, msg)
+			if err != nil {
+				log.Printf("Some error ocurred writing: %v", err)
+
+				return
+			}
+		case <-s.interrupt:
+			// Cleanly close the connection by sending a close message and then
+			// waiting (with timeout) for the server to close the connection.
+			//
+			// TODO - This does not currently shutdown cleanly, as the caller does
+			// not wait for this to complete.
+			err := s.conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+			)
+			if err != nil {
+				log.Println("write close:", err)
+				return
+			}
+			select {
+			case <-s.done:
+			case <-time.After(time.Second):
+			}
+			return
+		}
 	}
 }

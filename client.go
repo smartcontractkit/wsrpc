@@ -277,7 +277,6 @@ func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTr
 
 	// Called when the transport closes
 	onClose := func() {
-		fmt.Println("OnCall Closed")
 		ac.mu.Lock()
 		once.Do(func() {
 			if ac.state == connectivity.Ready {

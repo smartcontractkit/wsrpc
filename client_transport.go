@@ -168,7 +168,7 @@ func (c *WebsocketClient) writePump() {
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
 			//
-			// TODO - This does not currently do anything, as the caller does
+			// TODO - This does not currently shutdown cleanly, as the caller does
 			// not wait for this to complete.
 			err := c.conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),

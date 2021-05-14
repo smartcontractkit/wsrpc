@@ -57,6 +57,8 @@ func NewServer(opt ...ServerOption) *Server {
 	return s
 }
 
+// Serve accepts incoming connections on the listener lis, creating a new
+// ServerTransport and service goroutine for each.
 func (s *Server) Serve(lis net.Listener) {
 	httpsrv := &http.Server{
 		TLSConfig: s.opts.creds.Config,
@@ -146,7 +148,6 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 
 	for {
 		select {
-
 		case msg := <-tr.Read():
 			if s.readFn != nil {
 				s.readFn(pubKey, msg)
@@ -177,6 +178,8 @@ func (s *Server) Stop() {
 	s.conns = nil
 	s.mu.Unlock()
 
+	// TODO - Wait for the connections to close cleanly so we can perform a
+	// graceful shutdown.
 	for _, conn := range conns {
 		conn.Close()
 	}
