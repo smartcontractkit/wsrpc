@@ -8,15 +8,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
+	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
 	// errConnClosing indicates that the connection is closing.
 	errConnClosing = errors.New("grpc: the connection is closing")
 )
+
+type ClientConnInterface interface {
+	Invoke(method string, args interface{}, reply interface{}) error
+}
 
 // ClientConn represents a virtual connection to a websocket endpoint, to
 // perform RPCs.
@@ -32,14 +39,19 @@ type ClientConn struct {
 
 	// readFn contains the registered handler for reading messages
 	readFn func(message []byte)
+
+	// Contains all pending method call ids and the channel to respond to when
+	// a result is received
+	methodCalls map[string]chan<- []byte
 }
 
 // Dial creates a client connection to the given target.
 func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 	cc := &ClientConn{
-		ctx:    context.Background(),
-		target: target,
-		dopts:  defaultDialOptions(),
+		ctx:         context.Background(),
+		target:      target,
+		dopts:       defaultDialOptions(),
+		methodCalls: map[string]chan<- []byte{},
 	}
 
 	for _, opt := range opts {
@@ -107,11 +119,39 @@ func (cc *ClientConn) listenForRead() {
 func (cc *ClientConn) handleRead(done <-chan struct{}) {
 	for {
 		select {
-		case msg := <-cc.conn.transport.Read():
-			cc.readFn(msg)
+		case in := <-cc.conn.transport.Read():
+			// Unmarshal the message
+			msg := &message.Message{}
+			if err := UnmarshalProtoMessage(in, msg); err != nil {
+				log.Fatalln("Failed to parse message:", err)
+				continue
+			}
+
+			switch ex := msg.Exchange.(type) {
+			case *message.Message_Request:
+				fmt.Println("Request:", msg)
+			case *message.Message_Response:
+				cc.handleMessageResponse(ex.Response)
+			default:
+				log.Println("Invalid message type")
+			}
 		case <-done:
 			return
 		}
+	}
+}
+
+// handleMessageResponse finds the call which matches the method call id of the
+// response and sends the payload to the call channel.
+func (cc *ClientConn) handleMessageResponse(r *message.Response) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+
+	callID := r.GetCallId()
+	if call, ok := cc.methodCalls[callID]; ok {
+		call <- r.GetPayload()
+
+		cc.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
 	}
 }
 
@@ -126,21 +166,75 @@ func (cc *ClientConn) Close() {
 	conn.teardown()
 }
 
-// Send writes the message to the connection
-func (cc *ClientConn) Send(msg []byte) error {
+func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{}) error {
+	// Ensure the connection state is ready
 	if cc.conn.state != connectivity.Ready {
 		return errors.New("connection is not ready")
 	}
 
-	cc.conn.transport.Write(msg)
+	// Convert the args proto into bytes to insert in the message
+	payload, err := MarshalProtoMessage(args)
+	if err != nil {
+		return err
+	}
+
+	// Build the message
+	callID := uuid.NewString()
+	msg := &message.Message{
+		Exchange: &message.Message_Request{
+			Request: &message.Request{
+				CallId:  callID,
+				Method:  method,
+				Payload: payload,
+			},
+		},
+	}
+
+	msgB, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	cc.mu.Lock()
+	wait := cc.registerMethodCall(callID)
+	cc.mu.Unlock()
+
+	cc.conn.transport.Write(msgB)
+
+	// Wait for the response
+	select {
+	case b := <-wait:
+		// Unmarshal the payload into the reply
+		err := UnmarshalProtoMessage(b, reply)
+		if err != nil {
+			return err
+		}
+	case <-time.After(2 * time.Second): // TODO - Make this configurable
+		// Remove the call since we have timeout
+		cc.mu.Lock()
+		cc.removeMethodCall(callID)
+		cc.mu.Unlock()
+		return errors.New("call timeout")
+	}
 
 	return nil
 }
 
-// RegisterReadHandler registers a handler for incoming messages from the
-// transport.
-func (cc *ClientConn) RegisterReadHandler(handler func(message []byte)) {
-	cc.readFn = handler
+// registerMethodCall registers a method call to the method call map.
+//
+// This requires a lock on cc.mu.
+func (cc *ClientConn) registerMethodCall(id string) <-chan []byte {
+	wait := make(chan []byte)
+	cc.methodCalls[id] = wait
+
+	return wait
+}
+
+// removeMethodCall deregisters a method call to the method call map.
+//
+// This requires a lock on cc.mu.
+func (cc *ClientConn) removeMethodCall(id string) {
+	delete(cc.methodCalls, id)
 }
 
 // addrConn is a network connection to a given address.
