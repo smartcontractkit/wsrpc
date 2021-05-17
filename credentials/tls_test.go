@@ -88,6 +88,7 @@ func Test_PubKeyFromCert(t *testing.T) {
 	require.NoError(t, err)
 
 	cert, err := x509.ParseCertificate(encodedCert)
+	require.NoError(t, err)
 
 	actual, err := PubKeyFromCert(cert)
 	require.NoError(t, err)

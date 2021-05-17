@@ -28,6 +28,8 @@ type ServerCallerInterface interface {
 type Server struct {
 	mu sync.RWMutex
 
+	httpsrv *http.Server
+
 	opts serverOptions
 	// Holds a list of the open connections mapped to a buffered channel of
 	// outbound messages.
@@ -89,6 +91,8 @@ func (s *Server) Serve(lis net.Listener) {
 	http.HandleFunc("/", s.wshandler)
 	go httpsrv.ServeTLS(lis, "", "")
 	defer httpsrv.Close()
+
+	s.httpsrv = httpsrv
 
 	<-s.done.Done()
 }
@@ -304,6 +308,10 @@ func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, 
 	return nil
 }
 
+func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
+	s.opts.creds.Config.VerifyPeerCertificate = credentials.VerifyPeerCertificate(pubKeys)
+}
+
 // Stop stops the gRPC server. It immediately closes all open
 // connections and listeners.
 func (s *Server) Stop() {
@@ -335,7 +343,7 @@ func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.
 
 	s.mu.Lock()
 	if _, ok := s.conns[pubKey]; ok {
-		return pubKey, errors.New("Only one connection allowed per client")
+		return pubKey, errors.New("only one connection allowed per client")
 	}
 	s.mu.Unlock()
 

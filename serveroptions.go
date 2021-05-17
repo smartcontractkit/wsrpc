@@ -18,9 +18,7 @@ type serverOptions struct {
 	readBufferSize  int
 
 	// Transport Credentials
-	creds            credentials.TransportCredentials
-	privKey          ed25519.PrivateKey
-	clientIdentities map[[ed25519.PublicKeySize]byte]string
+	creds credentials.TransportCredentials
 }
 
 // funcServerOption wraps a function that modifies serverOptions into an

@@ -1,7 +1,6 @@
 package wsrpc
 
 import (
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -111,7 +110,6 @@ func (s *WebsocketServer) start() {
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
 	defer func() {
-		fmt.Println("----> [Transport] Closing read pump goroutine")
 		defer close(s.done)
 	}()
 
@@ -140,10 +138,6 @@ func (s *WebsocketServer) readPump() {
 // server ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
 func (s *WebsocketServer) writePump() {
-	defer func() {
-		fmt.Println("----> [Transport] Closing write pump goroutine")
-	}()
-
 	for {
 		select {
 		case <-s.done:

@@ -21,6 +21,6 @@ func Test_MarshalUnmarshalProtoMessage(t *testing.T) {
 
 	assert.Equal(t, v, actual)
 
-	b, err = MarshalProtoMessage("anything")
+	_, err = MarshalProtoMessage("anything")
 	assert.Error(t, err)
 }

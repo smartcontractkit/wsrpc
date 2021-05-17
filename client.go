@@ -37,9 +37,6 @@ type ClientConn struct {
 	dopts dialOptions
 	conn  *addrConn
 
-	// readFn contains the registered handler for reading messages
-	readFn func(message []byte)
-
 	// Contains all pending method call ids and the channel to respond to when
 	// a result is received
 	methodCalls map[string]chan<- []byte
@@ -66,7 +63,7 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 
 	addrConn, err := cc.newAddrConn(target)
 	if err != nil {
-		return nil, errors.New("Could not establish a connection")
+		return nil, errors.New("could not establish a connection")
 	}
 
 	addrConn.connect()
@@ -175,8 +172,6 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 
 		cc.conn.transport.Write(replyMsg)
 	}
-
-	return
 }
 
 // handleMessageResponse finds the call which matches the method call id of the

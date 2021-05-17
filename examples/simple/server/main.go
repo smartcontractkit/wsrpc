@@ -105,7 +105,7 @@ type pingServer struct {
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
 	pubKey, ok := metadata.PublicKeyFromContext(ctx)
 	if !ok {
-		return nil, errors.New("Could not extract public key")
+		return nil, errors.New("could not extract public key")
 	}
 	name := s.clients[pubKey]
 

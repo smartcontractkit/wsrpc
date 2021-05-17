@@ -52,7 +52,7 @@ func newMutualTLSConfig(priv ed25519.PrivateKey, pubs []ed25519.PublicKey) (*tls
 		MaxVersion: tls.VersionTLS13,
 		MinVersion: tls.VersionTLS13,
 
-		VerifyPeerCertificate: verifyPeerCertificate(pubs),
+		VerifyPeerCertificate: VerifyPeerCertificate(pubs),
 	}, nil
 }
 
@@ -77,10 +77,10 @@ func newMinimalX509Cert(priv ed25519.PrivateKey) (tls.Certificate, error) {
 
 // Verifies that the certificate's public key matches with one of the keys in
 // our list of registered keys.
-func verifyPeerCertificate(pubs []ed25519.PublicKey) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+func VerifyPeerCertificate(pubs []ed25519.PublicKey) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 	return func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 		if len(rawCerts) != 1 {
-			return fmt.Errorf("Required exactly one client certificate")
+			return fmt.Errorf("required exactly one client certificate")
 		}
 		cert, err := x509.ParseCertificate(rawCerts[0])
 		if err != nil {
@@ -93,7 +93,7 @@ func verifyPeerCertificate(pubs []ed25519.PublicKey) func(rawCerts [][]byte, ver
 
 		ok := isValidPublicKey(pubs, pk)
 		if !ok {
-			return fmt.Errorf("Unknown public key on cert %x", pk)
+			return fmt.Errorf("unknown public key on cert %x", pk)
 		}
 
 		log.Printf("[TLS] Received good certificate")
@@ -125,12 +125,12 @@ func PubKeyFromCert(cert *x509.Certificate) (StaticSizedPublicKey, error) {
 // pubKeyFromCert returns an ed25519 public key extracted from the certificate.
 func pubKeyFromCert(cert *x509.Certificate) (ed25519.PublicKey, error) {
 	if cert.PublicKeyAlgorithm != x509.Ed25519 {
-		return nil, fmt.Errorf("Requires an ed25519 public key")
+		return nil, fmt.Errorf("requires an ed25519 public key")
 	}
 
 	pub, ok := cert.PublicKey.(ed25519.PublicKey)
 	if !ok {
-		return nil, fmt.Errorf("Invalid ed25519 public key")
+		return nil, fmt.Errorf("invalid ed25519 public key")
 	}
 
 	return pub, nil
