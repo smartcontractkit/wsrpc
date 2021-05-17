@@ -16,8 +16,10 @@ You can run the example in `examples/simple` by:
 
 ## TODO 
 
-[ ] Many Many Tests
-[x] Use Protobufs as the message format
-[ ] Server to Node RPC calls
-[ ] Handle Read/Write Limits of the websocket connection
-[ ] Dynamically Update TLS config to add more clients
+- [ ] Many Many Tests
+- [x] Use Protobufs as the message format
+- [x] Server to Node RPC calls
+- [ ] Handle Read/Write Limits of the websocket connection
+- [x] Dynamically Update TLS config to add more clients
+- [ ] Error handling
+- [ ] Response Status
