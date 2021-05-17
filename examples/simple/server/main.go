@@ -94,7 +94,9 @@ func pingClientsContinuously(c pb.PingServerCaller, clientIdentities map[credent
 	}
 }
 
-//--------------------
+//------------------------------------------------------------------------------
+// Implement the ping server handlers
+//------------------------------------------------------------------------------
 
 type pingServer struct {
 	clients map[credentials.StaticSizedPublicKey]string

@@ -21,7 +21,7 @@ var (
 	errConnClosing = errors.New("grpc: the connection is closing")
 )
 
-type ClientConnInterface interface {
+type ClientCallerInterface interface {
 	Invoke(method string, args interface{}, reply interface{}) error
 }
 
@@ -162,21 +162,10 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 		ctx := context.Background()
 		v, _ := md.Handler(cc.service.serviceImpl, ctx, dec)
 
-		// Marshal the reply payload
-		reply, err := MarshalProtoMessage(v)
+		msg, err := message.NewResponse(r.GetCallId(), v)
 		if err != nil {
 			log.Println(err)
 			return
-		}
-
-		// Construct the reply message
-		msg := &message.Message{
-			Exchange: &message.Message_Response{
-				Response: &message.Response{
-					CallId:  r.GetCallId(),
-					Payload: reply,
-				},
-			},
 		}
 
 		replyMsg, err := MarshalProtoMessage(msg)
@@ -240,22 +229,11 @@ func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{})
 		return errors.New("connection is not ready")
 	}
 
-	// Convert the args proto into bytes to insert in the message
-	payload, err := MarshalProtoMessage(args)
-	if err != nil {
-		return err
-	}
-
-	// Build the message
 	callID := uuid.NewString()
-	msg := &message.Message{
-		Exchange: &message.Message_Request{
-			Request: &message.Request{
-				CallId:  callID,
-				Method:  method,
-				Payload: payload,
-			},
-		},
+	msg, err := message.NewRequest(callID, method, args)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 
 	msgB, err := proto.Marshal(msg)

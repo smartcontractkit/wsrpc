@@ -6,16 +6,20 @@ import (
 	"github.com/smartcontractkit/wsrpc"
 )
 
+//------------------------------------------------------------------------------
+// Client RPC Caller
+//------------------------------------------------------------------------------
+
 // PingClient is the client API for Ping service.
 type PingClient interface {
 	Ping(ctx context.Context, in *PingRequest) (*PingResponse, error)
 }
 
 type pingClient struct {
-	cc wsrpc.ClientConnInterface
+	cc wsrpc.ClientCallerInterface
 }
 
-func NewPingClient(cc wsrpc.ClientConnInterface) PingClient {
+func NewPingClientCaller(cc wsrpc.ClientCallerInterface) PingClient {
 	return &pingClient{cc}
 }
 
@@ -28,7 +32,11 @@ func (c *pingClient) Ping(ctx context.Context, in *PingRequest) (*PingResponse, 
 	return out, nil
 }
 
-func RegisterPingClient(s wsrpc.ServiceRegistrar, c PingClient) {
+//------------------------------------------------------------------------------
+// Client RPC Service
+//------------------------------------------------------------------------------
+
+func RegisterPingClientService(s wsrpc.ServiceRegistrar, c PingClient) {
 	s.RegisterService(&PingClient_ServiceDesc, c)
 }
 
@@ -42,7 +50,6 @@ func _PingClient_Ping_Handler(srv interface{}, ctx context.Context, dec func(int
 }
 
 var PingClient_ServiceDesc = wsrpc.ServiceDesc{
-	ServiceName: "ping.Ping",
 	HandlerType: (*PingServer)(nil),
 	Methods: []wsrpc.MethodDesc{
 		{

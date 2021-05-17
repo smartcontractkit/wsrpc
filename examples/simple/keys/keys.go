@@ -9,6 +9,7 @@ import (
 )
 
 type Client struct {
+	ID                 string
 	Name               string
 	PubKey             string
 	PrivKey            string
@@ -22,12 +23,14 @@ const ServerPrivKey = "c1afd224cec2ff6066746bf9b7cdf7f9f4694ab7ef2ca1692ff923a30
 
 var Clients = []Client{
 	{
+		ID:                 "1",
 		Name:               "Alice",
 		PubKey:             "0f17c3bf72de8beef6e2d17a14c0a972f5d7e0e66e70722373f12b88382d40f9",
 		PrivKey:            "5ae73174dfe4ae293e25ba6845e76d9819e5f5432ff8820d5c996be292abf14f0f17c3bf72de8beef6e2d17a14c0a972f5d7e0e66e70722373f12b88382d40f9",
 		RegisteredOnServer: true,
 	},
 	{
+		ID:                 "2",
 		Name:               "Bob",
 		PubKey:             "9a36f1819c60970b0cb16585cacf35ed824b48bc8ac24980bf615bc8d7b9661c",
 		PrivKey:            "1b6093915ce64fa5ca15147808da47ccb64f50a16841edde12fd797c3e52d8169a36f1819c60970b0cb16585cacf35ed824b48bc8ac24980bf615bc8d7b9661c",
@@ -35,6 +38,7 @@ var Clients = []Client{
 	},
 	// This user is not registered on the server
 	{
+		ID:                 "3",
 		Name:               "Charlie",
 		PubKey:             "235750320bb723760add5969b3c51342e829542d399f82b07a0458092c3960af",
 		PrivKey:            "84206ddc52ad6f83569ed409829f194db1d3bbb65e7c04db5ca098d1f020ee47235750320bb723760add5969b3c51342e829542d399f82b07a0458092c3960af",

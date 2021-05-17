@@ -21,29 +21,10 @@ import (
 
 var ErrNotConnected = errors.New("client not connected")
 
-type methodHandler func(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error)
-
-// MethodDesc represents an RPC service's method specification.
-type MethodDesc struct {
-	MethodName string
-	Handler    methodHandler
+type ServerCallerInterface interface {
+	Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error
 }
 
-// ServiceDesc represents an RPC service's specification.
-type ServiceDesc struct {
-	ServiceName string
-
-	HandlerType interface{}
-	Methods     []MethodDesc
-}
-
-// serviceInfo wraps information about a service. It is very similar to
-// ServiceDesc and is constructed from it for internal purposes.
-type serviceInfo struct {
-	// Contains the implementation for the methods in this service.
-	serviceImpl interface{}
-	methods     map[string]*MethodDesc
-}
 type Server struct {
 	mu sync.RWMutex
 
@@ -53,7 +34,8 @@ type Server struct {
 	conns map[credentials.StaticSizedPublicKey]ServerTransport
 	// Parameters for upgrading a websocket connection
 	upgrader websocket.Upgrader
-	service  *serviceInfo
+	// The RPC service definition
+	service *serviceInfo
 
 	// Contains all pending method call ids and the channel to respond to when
 	// a result is received
@@ -201,48 +183,7 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 			// Handle the message request or response
 			switch ex := msg.Exchange.(type) {
 			case *message.Message_Request:
-				methodName := msg.GetRequest().GetMethod()
-				if md, ok := s.service.methods[methodName]; ok {
-					// Create a decoder function to unmarshal the message
-					dec := func(v interface{}) error {
-						err := UnmarshalProtoMessage(msg.GetRequest().GetPayload(), v)
-						if err != nil {
-							return err
-						}
-						return nil
-					}
-
-					// Inject the public key into the context so the handler's can use it
-					ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
-					//----------------------
-					// TODO - Handle errors by sending them in the message
-					//----------------------
-					v, _ := md.Handler(s.service.serviceImpl, ctx, dec)
-
-					// Marshal the reply payload
-					reply, err := MarshalProtoMessage(v)
-					if err != nil {
-						log.Println(err)
-						return
-					}
-
-					// Construct the reply message
-					msg := &message.Message{
-						Exchange: &message.Message_Response{
-							Response: &message.Response{
-								CallId:  msg.GetRequest().GetCallId(),
-								Payload: reply,
-							},
-						},
-					}
-
-					replyMsg, err := MarshalProtoMessage(msg)
-					if err != nil {
-						return
-					}
-
-					s.sendMsg(pubKey, replyMsg)
-				}
+				s.handleMessageRequest(pubKey, ex.Request)
 			case *message.Message_Response:
 				s.handleMessageResponse(ex.Response)
 			default:
@@ -251,6 +192,41 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 		case <-done:
 			return
 		}
+	}
+}
+
+func (s *Server) handleMessageRequest(pubKey [ed25519.PublicKeySize]byte, r *message.Request) {
+	methodName := r.GetMethod()
+	if md, ok := s.service.methods[methodName]; ok {
+		// Create a decoder function to unmarshal the message
+		dec := func(v interface{}) error {
+			err := UnmarshalProtoMessage(r.GetPayload(), v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
+		// Inject the public key into the context so the handler's can use it
+		ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
+		//----------------------
+		// TODO - Handle errors by sending them in the message
+		//----------------------
+		v, _ := md.Handler(s.service.serviceImpl, ctx, dec)
+
+		msg, err := message.NewResponse(r.GetCallId(), v)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		replyMsg, err := MarshalProtoMessage(msg)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		s.sendMsg(pubKey, replyMsg)
 	}
 }
 
@@ -288,22 +264,11 @@ func (s *Server) register(sd *ServiceDesc, ss interface{}) {
 }
 
 func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error {
-	// Convert the args proto into bytes to insert in the message
-	payload, err := MarshalProtoMessage(args)
-	if err != nil {
-		return err
-	}
-
-	// Build the message
 	callID := uuid.NewString()
-	msg := &message.Message{
-		Exchange: &message.Message_Request{
-			Request: &message.Request{
-				CallId:  callID,
-				Method:  method,
-				Payload: payload,
-			},
-		},
+	msg, err := message.NewRequest(callID, method, args)
+	if err != nil {
+		log.Println(err)
+		return err
 	}
 
 	req, err := MarshalProtoMessage(msg)

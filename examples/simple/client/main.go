@@ -36,11 +36,12 @@ func main() {
 	}
 	defer conn.Close()
 
-	// Initialize a new wsrpc client
-	c := ping.NewPingClient(conn)
+	// Initialize a new wsrpc client caller
+	// This is used to called RPC methods on the server
+	c := ping.NewPingClientCaller(conn)
+
 	// Initialize RPC call handlers on the client connection
-	// TODO - Maybe consider wrapping this in it's own client caller
-	pb.RegisterPingClient(conn, &pingClient{})
+	pb.RegisterPingClientService(conn, &pingClient{})
 
 	// Call the Ping method
 	go pingContinuously(c)

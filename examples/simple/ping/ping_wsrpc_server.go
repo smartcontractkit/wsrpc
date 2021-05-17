@@ -8,7 +8,7 @@ import (
 )
 
 //------------------------------------------------------------------------------
-// Server RPC Handler
+// Server RPC Service
 //------------------------------------------------------------------------------
 
 // PingServer is the server API for Ping service.
@@ -30,7 +30,6 @@ func _PingServer_Ping_Handler(srv interface{}, ctx context.Context, dec func(int
 }
 
 var PingServer_ServiceDesc = wsrpc.ServiceDesc{
-	ServiceName: "ping.Ping",
 	HandlerType: (*PingServer)(nil),
 	Methods: []wsrpc.MethodDesc{
 		{
