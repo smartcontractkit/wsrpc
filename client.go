@@ -39,7 +39,7 @@ type ClientConn struct {
 
 	// Contains all pending method call ids and the channel to respond to when
 	// a result is received
-	methodCalls map[string]chan<- []byte
+	methodCalls map[string]chan<- *message.Response
 
 	service *serviceInfo
 }
@@ -50,7 +50,7 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 		ctx:         context.Background(),
 		target:      target,
 		dopts:       defaultDialOptions(),
-		methodCalls: map[string]chan<- []byte{},
+		methodCalls: map[string]chan<- *message.Response{},
 	}
 
 	for _, opt := range opts {
@@ -152,14 +152,11 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 			return nil
 		}
 
-		//----------------------
-		// TODO - Handle errors by sending them in the message
-		//----------------------
 		// What should we put in the context?
 		ctx := context.Background()
-		v, _ := md.Handler(cc.service.serviceImpl, ctx, dec)
+		v, herr := md.Handler(cc.service.serviceImpl, ctx, dec)
 
-		msg, err := message.NewResponse(r.GetCallId(), v)
+		msg, err := message.NewResponse(r.GetCallId(), v, herr)
 		if err != nil {
 			log.Println(err)
 			return
@@ -182,7 +179,7 @@ func (cc *ClientConn) handleMessageResponse(r *message.Response) {
 
 	callID := r.GetCallId()
 	if call, ok := cc.methodCalls[callID]; ok {
-		call <- r.GetPayload()
+		call <- r
 
 		cc.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
 	}
@@ -225,13 +222,13 @@ func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{})
 	}
 
 	callID := uuid.NewString()
-	msg, err := message.NewRequest(callID, method, args)
+	req, err := message.NewRequest(callID, method, args)
 	if err != nil {
 		log.Println(err)
 		return err
 	}
 
-	msgB, err := proto.Marshal(msg)
+	reqB, err := proto.Marshal(req)
 	if err != nil {
 		return err
 	}
@@ -240,13 +237,18 @@ func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{})
 	wait := cc.registerMethodCall(callID)
 	cc.mu.Unlock()
 
-	cc.conn.transport.Write(msgB)
+	cc.conn.transport.Write(reqB)
 
 	// Wait for the response
 	select {
-	case b := <-wait:
+	case resp := <-wait:
+		// Handle error
+		if resp.Error != "" {
+			return errors.New(resp.Error)
+		}
+
 		// Unmarshal the payload into the reply
-		err := UnmarshalProtoMessage(b, reply)
+		err := UnmarshalProtoMessage(resp.GetPayload(), reply)
 		if err != nil {
 			return err
 		}
@@ -264,8 +266,8 @@ func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{})
 // registerMethodCall registers a method call to the method call map.
 //
 // This requires a lock on cc.mu.
-func (cc *ClientConn) registerMethodCall(id string) <-chan []byte {
-	wait := make(chan []byte)
+func (cc *ClientConn) registerMethodCall(id string) <-chan *message.Response {
+	wait := make(chan *message.Response)
 	cc.methodCalls[id] = wait
 
 	return wait

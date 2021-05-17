@@ -41,7 +41,7 @@ type Server struct {
 
 	// Contains all pending method call ids and the channel to respond to when
 	// a result is received
-	methodCalls map[string]chan<- []byte
+	methodCalls map[string]chan<- *message.Response
 
 	// Signals a quit event when the server wants to quit
 	quit *wsrpcsync.Event
@@ -62,7 +62,7 @@ func NewServer(opt ...ServerOption) *Server {
 			WriteBufferSize: opts.writeBufferSize,
 		},
 		conns:       map[credentials.StaticSizedPublicKey]ServerTransport{},
-		methodCalls: map[string]chan<- []byte{},
+		methodCalls: map[string]chan<- *message.Response{},
 		quit:        wsrpcsync.NewEvent(),
 		done:        wsrpcsync.NewEvent(),
 	}
@@ -216,9 +216,9 @@ func (s *Server) handleMessageRequest(pubKey [ed25519.PublicKeySize]byte, r *mes
 		//----------------------
 		// TODO - Handle errors by sending them in the message
 		//----------------------
-		v, _ := md.Handler(s.service.serviceImpl, ctx, dec)
+		v, herr := md.Handler(s.service.serviceImpl, ctx, dec)
 
-		msg, err := message.NewResponse(r.GetCallId(), v)
+		msg, err := message.NewResponse(r.GetCallId(), v, herr)
 		if err != nil {
 			log.Println(err)
 			return
@@ -242,7 +242,7 @@ func (s *Server) handleMessageResponse(r *message.Response) {
 
 	callID := r.GetCallId()
 	if call, ok := s.methodCalls[callID]; ok {
-		call <- r.GetPayload()
+		call <- r
 
 		s.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
 	}
@@ -291,9 +291,14 @@ func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, 
 
 	// Wait for the response
 	select {
-	case b := <-wait:
+	case msg := <-wait:
+		// Handle error
+		if msg.Error != "" {
+			return errors.New(msg.Error)
+		}
+
 		// Unmarshal the payload into the reply
-		err := UnmarshalProtoMessage(b, reply)
+		err := UnmarshalProtoMessage(msg.GetPayload(), reply)
 		if err != nil {
 			return err
 		}
@@ -353,8 +358,8 @@ func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.
 // registerMethodCall registers a method call to the method call map.
 //
 // This requires a lock on cc.mu.
-func (s *Server) registerMethodCall(id string) <-chan []byte {
-	wait := make(chan []byte)
+func (s *Server) registerMethodCall(id string) <-chan *message.Response {
+	wait := make(chan *message.Response)
 	s.methodCalls[id] = wait
 
 	return wait

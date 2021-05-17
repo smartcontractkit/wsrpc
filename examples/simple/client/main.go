@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/smartcontractkit/wsrpc"
 	"github.com/smartcontractkit/wsrpc/examples/simple/keys"
-	"github.com/smartcontractkit/wsrpc/examples/simple/ping"
 	pb "github.com/smartcontractkit/wsrpc/examples/simple/ping"
 )
 
@@ -38,7 +36,7 @@ func main() {
 
 	// Initialize a new wsrpc client caller
 	// This is used to called RPC methods on the server
-	c := ping.NewPingClientCaller(conn)
+	c := pb.NewPingClientCaller(conn)
 
 	// Initialize RPC call handlers on the client connection
 	pb.RegisterPingClientService(conn, &pingClient{})
@@ -64,9 +62,9 @@ func pingContinuously(client pb.PingClient) {
 	for {
 		res, err := client.Ping(context.Background(), &pb.PingRequest{Body: "ping"})
 		if err != nil {
-			log.Printf("[MAIN] Some error ocurred pinging: %v", err)
+			log.Printf("[RPC CALL] Some error ocurred pinging: %v", err)
 		} else {
-			fmt.Println("[MAIN] Response:", res.GetBody())
+			log.Printf("[RPC CALL] CALL: Ping -> %s", res.GetBody())
 		}
 
 		time.Sleep(5 * time.Second)
@@ -79,9 +77,11 @@ func pingContinuously(client pb.PingClient) {
 type pingClient struct{}
 
 func (c *pingClient) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-	log.Printf("[MAIN] recv: %s from server", req.Body)
+	resBody := "ping processed by client"
+
+	log.Printf("[RPC SERVICE HANDLER] %s -> %s", req.Body, resBody)
 
 	return &pb.PingResponse{
-		Body: "pong",
+		Body: resBody,
 	}, nil
 }

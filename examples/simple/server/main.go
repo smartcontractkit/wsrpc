@@ -76,18 +76,18 @@ func main() {
 func pingClientsContinuously(c pb.PingServerCaller, clientIdentities map[credentials.StaticSizedPublicKey]string) {
 	for {
 		for pubKey, name := range clientIdentities {
-			res, err := c.Ping(context.Background(), pubKey, &pb.PingRequest{Body: "Pong"})
+			res, err := c.Ping(context.Background(), pubKey, &pb.PingRequest{Body: "Ping"})
 			if err != nil {
 				if errors.Is(err, wsrpc.ErrNotConnected) {
-					log.Printf("[MAIN] %s: %v", name, err)
+					log.Printf("[RPC CALL] %s: %v", name, err)
 				} else {
-					log.Printf("[MAIN] Some error ocurred ponging: %v", err)
+					log.Printf("[RPC CALL] Some error ocurred ponging: %v", err)
 				}
 
 				continue
 			}
 
-			log.Printf("[MAIN] CALL: Ping (%s) -> %s", name, res.GetBody())
+			log.Printf("[RPC CALL] Ping (%s) -> %s", name, res.GetBody())
 		}
 
 		time.Sleep(5 * time.Second)
@@ -103,15 +103,16 @@ type pingServer struct {
 }
 
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	resBody := "ping processed by server"
 	pubKey, ok := metadata.PublicKeyFromContext(ctx)
 	if !ok {
 		return nil, errors.New("could not extract public key")
 	}
 	name := s.clients[pubKey]
 
-	log.Printf("[MAIN] recv: %s from %s", req.Body, name)
+	log.Printf("[RPC SERVICE HANDLER] %s (%s) -> %s", req.Body, name, resBody)
 
 	return &pb.PingResponse{
-		Body: "pingreceived",
-	}, nil
+		Body: resBody,
+	}, errors.New("ERROR")
 }

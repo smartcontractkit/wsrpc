@@ -21,5 +21,5 @@ You can run the example in `examples/simple` by:
 - [x] Server to Node RPC calls
 - [ ] Handle Read/Write Limits of the websocket connection
 - [x] Dynamically Update TLS config to add more clients
-- [ ] Error handling
+- [x] Simple string error handling
 - [ ] Response Status
