@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/smartcontractkit/wsrpc"
 	"github.com/smartcontractkit/wsrpc/credentials"
@@ -47,10 +48,13 @@ func main() {
 	pb.RegisterPingServer(s, &pingServer{
 		clients: clients,
 	})
+	caller := pb.NewPingServerCaller(s)
 
 	// Start serving
 	go s.Serve(lis)
 	defer s.Stop()
+
+	go pingClientsContinuously(caller, clients)
 
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -69,26 +73,26 @@ func main() {
 // TODO - Implement sending server RPC calls
 // Sends messages to all registered clients. Clients may not have an active
 // connection.
-// func sendMessages(s *wsrpc.Server, clientIdentities map[credentials.StaticSizedPublicKey]string) {
-// 	for {
-// 		for pubKey, name := range clientIdentities {
-// 			err := s.Send(pubKey, []byte("Pong"))
-// 			if err != nil {
-// 				if errors.Is(err, wsrpc.ErrNotConnected) {
-// 					log.Printf("[MAIN] %s: %v", name, err)
-// 				} else {
-// 					log.Printf("[MAIN] Some error ocurred ponging: %v", err)
-// 				}
+func pingClientsContinuously(c pb.PingServerCaller, clientIdentities map[credentials.StaticSizedPublicKey]string) {
+	for {
+		for pubKey, name := range clientIdentities {
+			res, err := c.Ping(context.Background(), pubKey, &pb.PingRequest{Body: "Pong"})
+			if err != nil {
+				if errors.Is(err, wsrpc.ErrNotConnected) {
+					log.Printf("[MAIN] %s: %v", name, err)
+				} else {
+					log.Printf("[MAIN] Some error ocurred ponging: %v", err)
+				}
 
-// 				continue
-// 			}
+				continue
+			}
 
-// 			log.Printf("[MAIN] Sent: Pong to %s", name)
-// 		}
+			log.Printf("[MAIN] CALL: Ping (%s) -> %s", name, res.GetBody())
+		}
 
-// 		time.Sleep(5 * time.Second)
-// 	}
-// }
+		time.Sleep(5 * time.Second)
+	}
+}
 
 //--------------------
 

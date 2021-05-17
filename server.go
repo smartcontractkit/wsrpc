@@ -5,12 +5,13 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/message"
@@ -54,13 +55,14 @@ type Server struct {
 	upgrader websocket.Upgrader
 	service  *serviceInfo
 
+	// Contains all pending method call ids and the channel to respond to when
+	// a result is received
+	methodCalls map[string]chan<- []byte
+
 	// Signals a quit event when the server wants to quit
 	quit *wsrpcsync.Event
 	// Signals a done event once the server has finished shutting down
 	done *wsrpcsync.Event
-
-	// readFn contains the registered handler for reading messages
-	readFn func(pubKey credentials.StaticSizedPublicKey, message []byte) []byte
 }
 
 func NewServer(opt ...ServerOption) *Server {
@@ -75,9 +77,10 @@ func NewServer(opt ...ServerOption) *Server {
 			ReadBufferSize:  opts.readBufferSize,
 			WriteBufferSize: opts.writeBufferSize,
 		},
-		conns: map[credentials.StaticSizedPublicKey]ServerTransport{},
-		quit:  wsrpcsync.NewEvent(),
-		done:  wsrpcsync.NewEvent(),
+		conns:       map[credentials.StaticSizedPublicKey]ServerTransport{},
+		methodCalls: map[string]chan<- []byte{},
+		quit:        wsrpcsync.NewEvent(),
+		done:        wsrpcsync.NewEvent(),
 	}
 
 	return s
@@ -196,7 +199,7 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 			}
 
 			// Handle the message request or response
-			switch msg.Exchange.(type) {
+			switch ex := msg.Exchange.(type) {
 			case *message.Message_Request:
 				methodName := msg.GetRequest().GetMethod()
 				if md, ok := s.service.methods[methodName]; ok {
@@ -241,13 +244,27 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 					s.sendMsg(pubKey, replyMsg)
 				}
 			case *message.Message_Response:
-				fmt.Println("This is response message")
+				s.handleMessageResponse(ex.Response)
 			default:
 				log.Println("Invalid message type")
 			}
 		case <-done:
 			return
 		}
+	}
+}
+
+// handleMessageResponse finds the call which matches the method call id of the
+// response and sends the payload to the call channel.
+func (s *Server) handleMessageResponse(r *message.Response) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	callID := r.GetCallId()
+	if call, ok := s.methodCalls[callID]; ok {
+		call <- r.GetPayload()
+
+		s.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
 	}
 }
 
@@ -268,6 +285,58 @@ func (s *Server) register(sd *ServiceDesc, ss interface{}) {
 		info.methods[d.MethodName] = d
 	}
 	s.service = info
+}
+
+func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error {
+	// Convert the args proto into bytes to insert in the message
+	payload, err := MarshalProtoMessage(args)
+	if err != nil {
+		return err
+	}
+
+	// Build the message
+	callID := uuid.NewString()
+	msg := &message.Message{
+		Exchange: &message.Message_Request{
+			Request: &message.Request{
+				CallId:  callID,
+				Method:  method,
+				Payload: payload,
+			},
+		},
+	}
+
+	req, err := MarshalProtoMessage(msg)
+	if err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	wait := s.registerMethodCall(callID)
+	s.mu.Unlock()
+
+	err = s.sendMsg(pubKey, req)
+	if err != nil {
+		return err
+	}
+
+	// Wait for the response
+	select {
+	case b := <-wait:
+		// Unmarshal the payload into the reply
+		err := UnmarshalProtoMessage(b, reply)
+		if err != nil {
+			return err
+		}
+	case <-time.After(2 * time.Second): // TODO - Make this configurable
+		// Remove the call since we have timeout
+		s.mu.Lock()
+		s.removeMethodCall(callID)
+		s.mu.Unlock()
+		return errors.New("call timeout")
+	}
+
+	return nil
 }
 
 // Stop stops the gRPC server. It immediately closes all open
@@ -306,4 +375,21 @@ func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.
 	s.mu.Unlock()
 
 	return pubKey, nil
+}
+
+// registerMethodCall registers a method call to the method call map.
+//
+// This requires a lock on cc.mu.
+func (s *Server) registerMethodCall(id string) <-chan []byte {
+	wait := make(chan []byte)
+	s.methodCalls[id] = wait
+
+	return wait
+}
+
+// removeMethodCall deregisters a method call to the method call map.
+//
+// This requires a lock on cc.mu.
+func (s *Server) removeMethodCall(id string) {
+	delete(s.methodCalls, id)
 }

@@ -38,6 +38,9 @@ func main() {
 
 	// Initialize a new wsrpc client
 	c := ping.NewPingClient(conn)
+	// Initialize RPC call handlers on the client connection
+	// TODO - Maybe consider wrapping this in it's own client caller
+	pb.RegisterPingClient(conn, &pingClient{})
 
 	// Call the Ping method
 	go pingContinuously(c)
@@ -67,4 +70,17 @@ func pingContinuously(client pb.PingClient) {
 
 		time.Sleep(5 * time.Second)
 	}
+}
+
+//--------------------
+
+// Implements RPC call handlers for the ping client
+type pingClient struct{}
+
+func (c *pingClient) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
+	log.Printf("[MAIN] recv: %s from server", req.Body)
+
+	return &pb.PingResponse{
+		Body: "pong",
+	}, nil
 }

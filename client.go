@@ -43,6 +43,8 @@ type ClientConn struct {
 	// Contains all pending method call ids and the channel to respond to when
 	// a result is received
 	methodCalls map[string]chan<- []byte
+
+	service *serviceInfo
 }
 
 // Dial creates a client connection to the given target.
@@ -129,7 +131,7 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 
 			switch ex := msg.Exchange.(type) {
 			case *message.Message_Request:
-				fmt.Println("Request:", msg)
+				cc.handleMessageRequest(ex.Request)
 			case *message.Message_Response:
 				cc.handleMessageResponse(ex.Response)
 			default:
@@ -139,6 +141,53 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 			return
 		}
 	}
+}
+
+func (cc *ClientConn) handleMessageRequest(r *message.Request) {
+	methodName := r.GetMethod()
+	if md, ok := cc.service.methods[methodName]; ok {
+		// Create a decoder function to unmarshal the message
+		dec := func(v interface{}) error {
+			err := UnmarshalProtoMessage(r.GetPayload(), v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
+		//----------------------
+		// TODO - Handle errors by sending them in the message
+		//----------------------
+		// What should we put in the context?
+		ctx := context.Background()
+		v, _ := md.Handler(cc.service.serviceImpl, ctx, dec)
+
+		// Marshal the reply payload
+		reply, err := MarshalProtoMessage(v)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		// Construct the reply message
+		msg := &message.Message{
+			Exchange: &message.Message_Response{
+				Response: &message.Response{
+					CallId:  r.GetCallId(),
+					Payload: reply,
+				},
+			},
+		}
+
+		replyMsg, err := MarshalProtoMessage(msg)
+		if err != nil {
+			return
+		}
+
+		cc.conn.transport.Write(replyMsg)
+	}
+
+	return
 }
 
 // handleMessageResponse finds the call which matches the method call id of the
@@ -153,6 +202,25 @@ func (cc *ClientConn) handleMessageResponse(r *message.Response) {
 
 		cc.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
 	}
+}
+
+func (cc *ClientConn) RegisterService(sd *ServiceDesc, ss interface{}) {
+	cc.register(sd, ss)
+}
+
+func (cc *ClientConn) register(sd *ServiceDesc, ss interface{}) {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+
+	info := &serviceInfo{
+		serviceImpl: ss,
+		methods:     make(map[string]*MethodDesc),
+	}
+	for i := range sd.Methods {
+		d := &sd.Methods[i]
+		info.methods[d.MethodName] = d
+	}
+	cc.service = info
 }
 
 // Close tears down the ClientConn and all underlying connections.
