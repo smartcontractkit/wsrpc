@@ -6,12 +6,13 @@ import (
 
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
+	"github.com/smartcontractkit/wsrpc/internal/transport"
 )
 
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
 // values passed to Dial.
 type dialOptions struct {
-	copts ConnectOptions
+	copts transport.ConnectOptions
 	bs    backoff.Strategy
 }
 
@@ -53,6 +54,6 @@ func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicK
 
 func defaultDialOptions() dialOptions {
 	return dialOptions{
-		copts: ConnectOptions{},
+		copts: transport.ConnectOptions{},
 	}
 }

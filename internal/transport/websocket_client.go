@@ -1,4 +1,4 @@
-package wsrpc
+package transport
 
 import (
 	"context"
@@ -8,34 +8,20 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/smartcontractkit/wsrpc/credentials"
 )
-
-// ConnectOptions covers all relevant options for communicating with the server.
-type ConnectOptions struct {
-	// TransportCredentials stores the Authenticator required to setup a client
-	// connection.
-	TransportCredentials credentials.TransportCredentials
-}
-
-type ClientTransport interface {
-	// Close tears down this transport. Once it returns, the transport
-	// should not be accessed any more.
-	Close() error
-
-	// Write sends a message to the stream.
-	Write(msg []byte) error
-
-	// Read reads a message from the stream
-	Read() <-chan []byte
-}
 
 // WebsocketClient implements the ClientTransport interface with websockets.
 type WebsocketClient struct {
 	ctx context.Context
 
-	conn    *websocket.Conn // underlying communication channel
-	onClose func()          // Called when the transport closes itself
+	// Config
+	writeTimeout time.Duration
+
+	// Underlying communication channel
+	conn *websocket.Conn
+
+	// Callback function called when the transport is closed
+	onClose func()
 
 	// Communication channels
 	write chan []byte
@@ -47,9 +33,14 @@ type WebsocketClient struct {
 	interrupt chan struct{}
 }
 
-// NewWebsocketClient establishes the transport with the required ConnectOptions
+// newWebsocketClient establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func NewWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, onClose func()) (_ *WebsocketClient, err error) {
+func newWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, onClose func()) (_ *WebsocketClient, err error) {
+	writeTimeout := defaultWriteTimeout
+	if opts.WriteTimeout != 0 {
+		writeTimeout = opts.WriteTimeout
+	}
+
 	d := websocket.Dialer{
 		TLSClientConfig:  opts.TransportCredentials.Config,
 		HandshakeTimeout: 45 * time.Second,
@@ -62,26 +53,20 @@ func NewWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 	}
 
 	c := &WebsocketClient{
-		ctx:       ctx,
-		conn:      conn,
-		onClose:   onClose,
-		write:     make(chan []byte), // Should this be buffered?
-		read:      make(chan []byte), // Should this be buffered?
-		done:      make(chan struct{}),
-		interrupt: make(chan struct{}),
+		ctx:          ctx,
+		writeTimeout: writeTimeout,
+		conn:         conn,
+		onClose:      onClose,
+		write:        make(chan []byte), // Should this be buffered?
+		read:         make(chan []byte), // Should this be buffered?
+		done:         make(chan struct{}),
+		interrupt:    make(chan struct{}),
 	}
 
 	// Start go routines to establish the read/write channels
 	go c.start()
 
 	return c, nil
-}
-
-// Close closes the websocket connection and cleans up pump goroutines.
-func (c *WebsocketClient) Close() error {
-	close(c.interrupt)
-
-	return nil
 }
 
 // Read returns a channel which provides the messages as they are read
@@ -92,6 +77,13 @@ func (c *WebsocketClient) Read() <-chan []byte {
 // Write writes a message the websocket connection
 func (c *WebsocketClient) Write(msg []byte) error {
 	c.write <- msg
+
+	return nil
+}
+
+// Close closes the websocket connection and cleans up pump goroutines.
+func (c *WebsocketClient) Close() error {
+	close(c.interrupt)
 
 	return nil
 }
@@ -152,14 +144,14 @@ func (c *WebsocketClient) writePump() {
 			return
 		case msg := <-c.write:
 			// Write the message
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
 				log.Printf("[Transport] Error ocurred writing: %v", err)
 				return
 			}
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				log.Printf("[Transport] Error ocurred pinging: %v", err)
 				return

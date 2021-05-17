@@ -15,16 +15,22 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/message"
+	"github.com/smartcontractkit/wsrpc/internal/transport"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
 	"github.com/smartcontractkit/wsrpc/metadata"
 )
 
 var ErrNotConnected = errors.New("client not connected")
 
+// ServerCallerInterface defines the functions clients need to perform an RPCs.
+// It is implemented by *Server
 type ServerCallerInterface interface {
+	// Invoke performs a RPC and returns after the response is received into
+	// reply.
 	Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error
 }
 
+// Server is a wsrpc server to both perform and serve RPC requests.
 type Server struct {
 	mu sync.RWMutex
 
@@ -33,7 +39,7 @@ type Server struct {
 	opts serverOptions
 	// Holds a list of the open connections mapped to a buffered channel of
 	// outbound messages.
-	conns map[credentials.StaticSizedPublicKey]ServerTransport
+	conns map[credentials.StaticSizedPublicKey]transport.ServerTransport
 	// Parameters for upgrading a websocket connection
 	upgrader websocket.Upgrader
 	// The RPC service definition
@@ -61,25 +67,13 @@ func NewServer(opt ...ServerOption) *Server {
 			ReadBufferSize:  opts.readBufferSize,
 			WriteBufferSize: opts.writeBufferSize,
 		},
-		conns:       map[credentials.StaticSizedPublicKey]ServerTransport{},
+		conns:       map[credentials.StaticSizedPublicKey]transport.ServerTransport{},
 		methodCalls: map[string]chan<- *message.Response{},
 		quit:        wsrpcsync.NewEvent(),
 		done:        wsrpcsync.NewEvent(),
 	}
 
 	return s
-}
-
-// ServiceRegistrar wraps a single method that supports service registration. It
-// enables users to pass concrete types other than wsrpc.Server to the service
-// registration methods exported by the IDL generated code.
-type ServiceRegistrar interface {
-	// RegisterService registers a service and its implementation to the
-	// concrete type implementing this interface.  It may not be called
-	// once the server has started serving.
-	// desc describes the service and its methods and handlers. impl is the
-	// service implementation which is passed to the method handlers.
-	RegisterService(desc *ServiceDesc, impl interface{})
 }
 
 // Serve accepts incoming connections on the listener lis, creating a new
@@ -97,6 +91,8 @@ func (s *Server) Serve(lis net.Listener) {
 	<-s.done.Done()
 }
 
+// wshandler upgrades the HTTP connection to a websocket connection and
+// registers the connection's pub key for the client.
 func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	// Do not establish a new connection if quit has already been fired
 	if s.quit.HasFired() {
@@ -122,7 +118,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	// messages) and then ensures the handler to returns
 	done := make(chan struct{})
 
-	config := &ServerConfig{}
+	config := &transport.ServerConfig{}
 	onClose := func() {
 		s.mu.Lock()
 		delete(s.conns, pubKey)
@@ -132,7 +128,11 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Initialize the transport
-	tr := NewWebsocketServer(conn, config, onClose)
+	tr, err := transport.NewServerTransport(conn, config, onClose)
+	if err != nil {
+		log.Println("Could not initialize server transport")
+		return
+	}
 
 	// Register the transport against the public key
 	s.mu.Lock()
@@ -199,6 +199,9 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 	}
 }
 
+// handleMessageRequest looks up the method matching the method name and calls
+// the handler. The connection client's public is injected into the context,
+// so the handler is able to identifer the caller.
 func (s *Server) handleMessageRequest(pubKey [ed25519.PublicKeySize]byte, r *message.Request) {
 	methodName := r.GetMethod()
 	if md, ok := s.service.methods[methodName]; ok {
@@ -213,9 +216,6 @@ func (s *Server) handleMessageRequest(pubKey [ed25519.PublicKeySize]byte, r *mes
 
 		// Inject the public key into the context so the handler's can use it
 		ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
-		//----------------------
-		// TODO - Handle errors by sending them in the message
-		//----------------------
 		v, herr := md.Handler(s.service.serviceImpl, ctx, dec)
 
 		msg, err := message.NewResponse(r.GetCallId(), v, herr)
@@ -248,6 +248,8 @@ func (s *Server) handleMessageResponse(r *message.Response) {
 	}
 }
 
+// RegisterService registers a service and its implementation to the wsrpc
+// server. This must be called before invoking Serve.
 func (s *Server) RegisterService(sd *ServiceDesc, ss interface{}) {
 	s.register(sd, ss)
 }
@@ -267,6 +269,8 @@ func (s *Server) register(sd *ServiceDesc, ss interface{}) {
 	s.service = info
 }
 
+// Invoke sends the RPC request on the connection which connected with the
+// public key and returns after response is received.
 func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error {
 	callID := uuid.NewString()
 	msg, err := message.NewRequest(callID, method, args)
@@ -313,6 +317,7 @@ func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, 
 	return nil
 }
 
+// UpdatePublicKeys updates the list of allowable public keys in the TLS config
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 	s.opts.creds.Config.VerifyPeerCertificate = credentials.VerifyPeerCertificate(pubKeys)
 }

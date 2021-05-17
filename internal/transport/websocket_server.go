@@ -1,4 +1,4 @@
-package wsrpc
+package transport
 
 import (
 	"log"
@@ -8,52 +8,64 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-type ServerTransport interface {
-	// Close tears down the transport. Once it is called, the transport
-	// should not be accessed any more.
-	Close() error
-
-	// Read reads a message from the stream.
-	Read() <-chan []byte
-
-	// Write sends a message to the stream.
-	Write(msg []byte) error
-}
-
-// ServerConfig consists of all the configurations to establish a server transport.
-type ServerConfig struct{}
-
 type WebsocketServer struct {
 	mu sync.Mutex
 
-	conn *websocket.Conn // underlying communication channel
+	// config
+	writeTimeout time.Duration
 
+	// Underlying communication channel
+	conn *websocket.Conn
+
+	// The current start of the server transport
 	state transportState
 
-	onClose func() // Callback function called when the transport is closed
+	// Callback function called when the transport is closed
+	onClose func()
 
 	// Communication channels
 	write chan []byte
 	read  chan []byte
 
-	done      chan struct{}
+	// A signal channel called when the reader encounters a websocket close error
+	done chan struct{}
+	// A signal channel called when the transport is closed
 	interrupt chan struct{}
 }
 
-// NewWebsocket server upgrades an HTTP connection to a websocket connection
-func NewWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) ServerTransport {
+// newWebsocketServer server upgrades an HTTP connection to a websocket connection
+func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) *WebsocketServer {
+	writeTimeout := defaultWriteTimeout
+	if config.WriteTimeout != 0 {
+		writeTimeout = config.WriteTimeout
+	}
+
 	s := &WebsocketServer{
-		conn:      c,
-		onClose:   onClose,
-		write:     make(chan []byte),
-		read:      make(chan []byte),
-		done:      make(chan struct{}),
-		interrupt: make(chan struct{}),
+		writeTimeout: writeTimeout,
+		conn:         c,
+		onClose:      onClose,
+		write:        make(chan []byte),
+		read:         make(chan []byte),
+		done:         make(chan struct{}),
+		interrupt:    make(chan struct{}),
 	}
 
 	go s.start()
 
 	return s
+}
+
+// Read returns a channel which provides the messages as they are read
+func (c *WebsocketServer) Read() <-chan []byte {
+	return c.read
+}
+
+// Write writes a message the websocket connection
+func (s *WebsocketServer) Write(msg []byte) error {
+	// Send the message to the channel
+	s.write <- msg
+
+	return nil
 }
 
 // Close closes the websocket connection and cleans up pump goroutines. Notifies
@@ -78,20 +90,7 @@ func (s *WebsocketServer) Close() error {
 	return nil
 }
 
-// Read returns a channel which provides the messages as they are read
-func (c *WebsocketServer) Read() <-chan []byte {
-	return c.read
-}
-
-// Write writes a message the websocket connection
-func (s *WebsocketServer) Write(msg []byte) error {
-	// Send the message to the channel
-	s.write <- msg
-
-	return nil
-}
-
-//
+// start runs readPump in a goroutine and waits on writePump.
 func (s *WebsocketServer) start() {
 	defer func() {
 		s.Close()
@@ -142,10 +141,10 @@ func (s *WebsocketServer) writePump() {
 		select {
 		case <-s.done:
 			// When the read detects a websocket closure, it will close the done
-			// channel so we can exit
+			// channel so we can exit.
 			return
 		case msg := <-s.write:
-			s.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 			err := s.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
 				log.Printf("Some error ocurred writing: %v", err)

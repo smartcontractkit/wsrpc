@@ -4,6 +4,18 @@ import (
 	"context"
 )
 
+// ServiceRegistrar wraps a single method that supports service registration. It
+// enables users to pass concrete types other than wsrpc.Server to the service
+// registration methods exported by the IDL generated code.
+type ServiceRegistrar interface {
+	// RegisterService registers a service and its implementation to the
+	// concrete type implementing this interface.  It may not be called
+	// once the server has started serving.
+	// desc describes the service and its methods and handlers. impl is the
+	// service implementation which is passed to the method handlers.
+	RegisterService(desc *ServiceDesc, impl interface{})
+}
+
 type methodHandler func(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error)
 
 // MethodDesc represents an RPC service's method specification.

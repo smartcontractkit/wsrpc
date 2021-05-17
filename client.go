@@ -12,6 +12,7 @@ import (
 	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 	"github.com/smartcontractkit/wsrpc/internal/message"
+	"github.com/smartcontractkit/wsrpc/internal/transport"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
 	"google.golang.org/protobuf/proto"
 )
@@ -21,18 +22,22 @@ var (
 	errConnClosing = errors.New("grpc: the connection is closing")
 )
 
+// ClientCallerInterface defines the functions clients need to perform an RPC.
+// It is implemented by *ClientConn
 type ClientCallerInterface interface {
 	Invoke(method string, args interface{}, reply interface{}) error
 }
 
 // ClientConn represents a virtual connection to a websocket endpoint, to
-// perform RPCs.
+// perform and serve RPCs
 type ClientConn struct {
 	ctx context.Context
 	mu  sync.RWMutex
 
+	// The websocket address
 	target string
-	csCh   <-chan connectivity.State
+	// A channel which receives updates when connectivity state changes
+	csCh <-chan connectivity.State
 
 	dopts dialOptions
 	conn  *addrConn
@@ -41,6 +46,7 @@ type ClientConn struct {
 	// a result is received
 	methodCalls map[string]chan<- *message.Response
 
+	// The RPC service definition
 	service *serviceInfo
 }
 
@@ -140,6 +146,8 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 	}
 }
 
+// handleMessageRequest looks up the method matching the method name and calls
+// the handler.
 func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 	methodName := r.GetMethod()
 	if md, ok := cc.service.methods[methodName]; ok {
@@ -152,7 +160,6 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 			return nil
 		}
 
-		// What should we put in the context?
 		ctx := context.Background()
 		v, herr := md.Handler(cc.service.serviceImpl, ctx, dec)
 
@@ -185,6 +192,8 @@ func (cc *ClientConn) handleMessageResponse(r *message.Response) {
 	}
 }
 
+// RegisterService registers a service and its implementation to the wsrpc
+// server.
 func (cc *ClientConn) RegisterService(sd *ServiceDesc, ss interface{}) {
 	cc.register(sd, ss)
 }
@@ -215,6 +224,8 @@ func (cc *ClientConn) Close() {
 	conn.teardown()
 }
 
+// Invoke sends the RPC request on the wire and returns after response is
+// received.
 func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 	if cc.conn.state != connectivity.Ready {
@@ -293,7 +304,7 @@ type addrConn struct {
 	// transport is set when there's a viable transport, and is reset
 	// to nil when the current transport should no longer be used (e.g.
 	// after transport is closed, ac has been torn down).
-	transport ClientTransport // The current transport.
+	transport transport.ClientTransport // The current transport.
 
 	mu sync.Mutex
 
@@ -408,7 +419,7 @@ func (ac *addrConn) resetTransport() {
 // it returns an error which used to detect whether a retry is necessary. This
 // also returns a reconnect event which is fired when the transport closes due
 // to issues with the underlying connection.
-func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTransport, *wsrpcsync.Event, error) {
+func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions) (transport.ClientTransport, *wsrpcsync.Event, error) {
 	reconnect := wsrpcsync.NewEvent()
 	once := sync.Once{}
 
@@ -424,7 +435,7 @@ func (ac *addrConn) createTransport(addr string, copts ConnectOptions) (ClientTr
 		reconnect.Fire()
 	}
 
-	tr, err := NewWebsocketClient(ac.cc.ctx, addr, copts, onClose)
+	tr, err := transport.NewClientTransport(ac.cc.ctx, addr, copts, onClose)
 
 	return tr, reconnect, err
 }
