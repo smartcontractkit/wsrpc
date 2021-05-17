@@ -114,5 +114,5 @@ func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRes
 
 	return &pb.PingResponse{
 		Body: resBody,
-	}, errors.New("ERROR")
+	}, nil
 }
