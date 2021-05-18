@@ -22,10 +22,10 @@ var (
 	errConnClosing = errors.New("grpc: the connection is closing")
 )
 
-// ClientCallerInterface defines the functions clients need to perform an RPC.
-// It is implemented by *ClientConn
-type ClientCallerInterface interface {
-	Invoke(method string, args interface{}, reply interface{}) error
+// ClientInterface defines the functions clients need to perform an RPC.
+// It is implemented by *ClientConn and *Server
+type ClientInterface interface {
+	Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error
 }
 
 // ClientConn represents a virtual connection to a websocket endpoint, to
@@ -226,7 +226,7 @@ func (cc *ClientConn) Close() {
 
 // Invoke sends the RPC request on the wire and returns after response is
 // received.
-func (cc *ClientConn) Invoke(method string, args interface{}, reply interface{}) error {
+func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 	if cc.conn.state != connectivity.Ready {
 		return errors.New("connection is not ready")

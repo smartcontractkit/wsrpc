@@ -2,6 +2,29 @@
 
 Establishes a persistent bi-directional communication channel using mTLS and websockets.
 
+## Set up
+
+In order to generate service definition you will need the wsrpc protoc plugin.
+
+Build the protoc plugin 
+
+```
+cd cmd/protoc-gen-go-wsrpc
+go build
+```
+
+Place the resulting binary in your GOPATH.
+
+In the directory containing your protobuf service definition, run:
+
+```
+protoc --go_out=. --go_opt=paths=source_relative \
+--go-wsrpc_out=. \
+--go-wsrpc_opt=paths=source_relative yourproto.proto
+```
+
+This will generate the service definitions in *_wsrpc.pb.go
+
 ## Usage
 
 ### Client to Server RPC
@@ -51,7 +74,7 @@ defer conn.Close()
 
 // Initialize a new wsrpc client caller
 // This is used to called RPC methods on the server
-c := pb.NewPingClientCaller(conn)
+c := pb.NewPingClient(conn)
 
 c.Ping(context.Background(), &pb.Ping{Body: "Ping"})
 ```
@@ -80,28 +103,28 @@ if err != nil {
     log.Fatalf("[MAIN] failed to listen: %v", err)
 }
 s := wsrpc.NewServer(wsrpc.Creds(privKey, pubKeys))
-caller := pb.NewPingServerCaller(s)
+c := pb.NewPingClient(s)
 
 s.Serve(lis)
 
 // Call the RPC method with the pub key so we know which connection to send it to
-caller.Ping(context.Background(), pubKey, &pb.PingRequest{Body: "Ping"})
+// otherwise it will error.
+ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
+c.Ping(ctx, &pb.PingRequest{Body: "Ping"})
 ```
 
 Initialize a client with the client's private key and the server's public key
 
 ```go
-conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, serverPubKey))
+conn, err := wsrpc.Dial("127.0.0.1:1337", wsrpc.WithTransportCreds(privKey, serverPubKey))
 if err != nil {
     log.Fatalln(err)
 }
 defer conn.Close()
 
 // Initialize RPC call handlers on the client connection
-pb.RegisterPingClientService(conn, &pingClient{})
+pb.RegisterPingServer(conn, &pingClient{})
 ```
-
-**Note: We do not currently have generators for protobuf service definitions so you will have to write them yourself. See examples/simple/ping** 
 
 ## Example
 
@@ -123,4 +146,4 @@ While the client's are connected, kill the server and see the client's enter a b
 - [x] Dynamically Update TLS config to add more clients
 - [x] Simple string error handling
 - [ ] Response Status
-- [ ] Service Definition Generator Plugin
+- [x] Service Definition Generator Plugin

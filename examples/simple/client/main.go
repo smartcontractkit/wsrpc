@@ -36,10 +36,10 @@ func main() {
 
 	// Initialize a new wsrpc client caller
 	// This is used to called RPC methods on the server
-	c := pb.NewPingClientCaller(conn)
+	c := pb.NewPingClient(conn)
 
 	// Initialize RPC call handlers on the client connection
-	pb.RegisterPingClientService(conn, &pingClient{})
+	pb.RegisterGnipServer(conn, &gnipClient{})
 
 	// Call the Ping method
 	go pingContinuously(c)
@@ -74,14 +74,14 @@ func pingContinuously(client pb.PingClient) {
 //--------------------
 
 // Implements RPC call handlers for the ping client
-type pingClient struct{}
+type gnipClient struct{}
 
-func (c *pingClient) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-	resBody := "ping processed by client"
+func (c *gnipClient) Gnip(ctx context.Context, req *pb.GnipRequest) (*pb.GnipResponse, error) {
+	resBody := "gnop"
 
 	log.Printf("[RPC SERVICE HANDLER] %s -> %s", req.Body, resBody)
 
-	return &pb.PingResponse{
+	return &pb.GnipResponse{
 		Body: resBody,
 	}, nil
 }

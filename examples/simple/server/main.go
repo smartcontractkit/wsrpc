@@ -48,13 +48,13 @@ func main() {
 	pb.RegisterPingServer(s, &pingServer{
 		clients: clients,
 	})
-	caller := pb.NewPingServerCaller(s)
+	c := pb.NewGnipClient(s)
 
 	// Start serving
 	go s.Serve(lis)
 	defer s.Stop()
 
-	go pingClientsContinuously(caller, clients)
+	go pingClientsContinuously(c, clients)
 
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -73,22 +73,22 @@ func main() {
 // TODO - Implement sending server RPC calls
 // Sends messages to all registered clients. Clients may not have an active
 // connection.
-func pingClientsContinuously(c pb.PingServerCaller, clientIdentities map[credentials.StaticSizedPublicKey]string) {
+func pingClientsContinuously(c pb.GnipClient, clientIdentities map[credentials.StaticSizedPublicKey]string) {
 	for {
 		for pubKey, name := range clientIdentities {
 			ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
-			res, err := c.Ping(ctx, &pb.PingRequest{Body: "Ping"})
+			res, err := c.Gnip(ctx, &pb.GnipRequest{Body: "Gnip"})
 			if err != nil {
 				if errors.Is(err, wsrpc.ErrNotConnected) {
 					log.Printf("[RPC CALL] %s: %v", name, err)
 				} else {
-					log.Printf("[RPC CALL] Some error ocurred ponging: %v", err)
+					log.Printf("[RPC CALL] Some error ocurred: %v", err)
 				}
 
 				continue
 			}
 
-			log.Printf("[RPC CALL] Ping (%s) -> %s", name, res.GetBody())
+			log.Printf("[RPC CALL] Gnip (%s) -> %s", name, res.GetBody())
 		}
 
 		time.Sleep(5 * time.Second)
@@ -104,7 +104,7 @@ type pingServer struct {
 }
 
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-	resBody := "ping processed by server"
+	resBody := "pong"
 	pubKey, ok := metadata.PublicKeyFromContext(ctx)
 	if !ok {
 		return nil, errors.New("could not extract public key")

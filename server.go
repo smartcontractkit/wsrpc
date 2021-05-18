@@ -22,14 +22,6 @@ import (
 
 var ErrNotConnected = errors.New("client not connected")
 
-// ServerCallerInterface defines the functions clients need to perform an RPCs.
-// It is implemented by *Server
-type ServerCallerInterface interface {
-	// Invoke performs a RPC and returns after the response is received into
-	// reply.
-	Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error
-}
-
 // Server is a wsrpc server to both perform and serve RPC requests.
 type Server struct {
 	mu sync.RWMutex

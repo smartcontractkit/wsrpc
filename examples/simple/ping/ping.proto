@@ -4,10 +4,26 @@ option go_package = "github.com/smartcontractkit/wsrpc/examples/simple/ping";
 
 package ping;
 
+service Ping {
+    rpc Ping(PingRequest) returns (PingResponse);
+}
+
+service Gnip {
+    rpc Gnip(GnipRequest) returns (GnipResponse);
+}
+
 message PingRequest {
     string body = 1;
 }
 
 message PingResponse {
+    string body = 1;
+}
+
+message GnipRequest {
+    string body = 1;
+}
+
+message GnipResponse {
     string body = 1;
 }
