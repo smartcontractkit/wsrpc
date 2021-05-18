@@ -27,7 +27,7 @@ var ErrNotConnected = errors.New("client not connected")
 type ServerCallerInterface interface {
 	// Invoke performs a RPC and returns after the response is received into
 	// reply.
-	Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error
+	Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error
 }
 
 // Server is a wsrpc server to both perform and serve RPC requests.
@@ -165,7 +165,7 @@ func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
-func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan struct{}) {
+func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan struct{}) {
 	s.mu.Lock()
 	tr, ok := s.conns[pubKey]
 	s.mu.Unlock()
@@ -202,7 +202,7 @@ func (s *Server) handleRead(pubKey [ed25519.PublicKeySize]byte, done <-chan stru
 // handleMessageRequest looks up the method matching the method name and calls
 // the handler. The connection client's public is injected into the context,
 // so the handler is able to identifer the caller.
-func (s *Server) handleMessageRequest(pubKey [ed25519.PublicKeySize]byte, r *message.Request) {
+func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r *message.Request) {
 	methodName := r.GetMethod()
 	if md, ok := s.service.methods[methodName]; ok {
 		// Create a decoder function to unmarshal the message
@@ -271,7 +271,7 @@ func (s *Server) register(sd *ServiceDesc, ss interface{}) {
 
 // Invoke sends the RPC request on the connection which connected with the
 // public key and returns after response is received.
-func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, args interface{}, reply interface{}) error {
+func (s *Server) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	callID := uuid.NewString()
 	msg, err := message.NewRequest(callID, method, args)
 	if err != nil {
@@ -287,6 +287,12 @@ func (s *Server) Invoke(pubKey credentials.StaticSizedPublicKey, method string, 
 	s.mu.Lock()
 	wait := s.registerMethodCall(callID)
 	s.mu.Unlock()
+
+	// Extract the public key from context
+	pubKey, ok := metadata.PublicKeyFromContext(ctx)
+	if !ok {
+		return errors.New("could not extract public key")
+	}
 
 	err = s.sendMsg(pubKey, req)
 	if err != nil {

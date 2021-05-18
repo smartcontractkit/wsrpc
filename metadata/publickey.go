@@ -2,7 +2,8 @@ package metadata
 
 import (
 	"context"
-	"crypto/ed25519"
+
+	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
 type publicKeyCtxKey string
@@ -10,8 +11,8 @@ type publicKeyCtxKey string
 var PublicKeyCtxKey = publicKeyCtxKey("publickey")
 
 // PublicKeyFromContext extracts the public key from the context
-func PublicKeyFromContext(ctx context.Context) ([ed25519.PublicKeySize]byte, bool) {
-	pubKey, ok := ctx.Value(PublicKeyCtxKey).([ed25519.PublicKeySize]byte)
+func PublicKeyFromContext(ctx context.Context) (credentials.StaticSizedPublicKey, bool) {
+	pubKey, ok := ctx.Value(PublicKeyCtxKey).(credentials.StaticSizedPublicKey)
 
 	return pubKey, ok
 }

@@ -76,7 +76,8 @@ func main() {
 func pingClientsContinuously(c pb.PingServerCaller, clientIdentities map[credentials.StaticSizedPublicKey]string) {
 	for {
 		for pubKey, name := range clientIdentities {
-			res, err := c.Ping(context.Background(), pubKey, &pb.PingRequest{Body: "Ping"})
+			ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
+			res, err := c.Ping(ctx, &pb.PingRequest{Body: "Ping"})
 			if err != nil {
 				if errors.Is(err, wsrpc.ErrNotConnected) {
 					log.Printf("[RPC CALL] %s: %v", name, err)

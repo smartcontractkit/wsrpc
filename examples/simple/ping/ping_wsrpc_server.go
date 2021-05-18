@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/smartcontractkit/wsrpc"
-	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
 //------------------------------------------------------------------------------
@@ -45,7 +44,7 @@ var PingServer_ServiceDesc = wsrpc.ServiceDesc{
 
 // PingServerCaller is the server API for PingServer service.
 type PingServerCaller interface {
-	Ping(ctx context.Context, pubKey credentials.StaticSizedPublicKey, in *PingRequest) (*PingResponse, error)
+	Ping(ctx context.Context, in *PingRequest) (*PingResponse, error)
 }
 
 type pingServerCaller struct {
@@ -56,9 +55,9 @@ func NewPingServerCaller(sc wsrpc.ServerCallerInterface) PingServerCaller {
 	return &pingServerCaller{sc}
 }
 
-func (c *pingServerCaller) Ping(ctx context.Context, pubKey credentials.StaticSizedPublicKey, in *PingRequest) (*PingResponse, error) {
+func (c *pingServerCaller) Ping(ctx context.Context, in *PingRequest) (*PingResponse, error) {
 	out := new(PingResponse)
-	err := c.srv.Invoke(pubKey, "Ping", in, out)
+	err := c.srv.Invoke(ctx, "Ping", in, out)
 	if err != nil {
 		return nil, err
 	}
