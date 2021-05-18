@@ -79,8 +79,6 @@ c := pb.NewPingClient(conn)
 c.Ping(context.Background(), &pb.Ping{Body: "Ping"})
 ```
 
-**Note: We do not currently have generators for protobuf service definitions so you will have to write them yourself. See examples/simple/ping** 
-
 ### Server to Client RPC
 
 Implement handlers for the client
@@ -142,8 +140,9 @@ While the client's are connected, kill the server and see the client's enter a b
 - [ ] Many Many Tests
 - [x] Use Protobufs as the message format
 - [x] Server to Node RPC calls
-- [ ] Handle Read/Write Limits of the websocket connection
+- [x] Handle Read/Write Limits of the websocket connection
 - [x] Dynamically Update TLS config to add more clients
 - [x] Simple string error handling
 - [ ] Response Status
+- [ ] Figure out a better interface to identify the connection rather than relying on public key
 - [x] Service Definition Generator Plugin
