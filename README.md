@@ -6,7 +6,7 @@ Establishes a persistent bi-directional communication channel using mTLS and web
 
 In order to generate service definition you will need the wsrpc protoc plugin.
 
-Build the protoc plugin 
+Build the protoc plugin
 
 ```
 cd cmd/protoc-gen-go-wsrpc
@@ -34,7 +34,7 @@ Implement handlers for the server
 type pingServer struct {}
 
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-    // Extracts the connection client's public key. 
+    // Extracts the connection client's public key.
     // You can use this to identify the client
 	pubKey, ok := metadata.PublicKeyFromContext(ctx)
 	if !ok {
@@ -129,20 +129,20 @@ pb.RegisterPingServer(conn, &pingClient{})
 You can run a simple example where both the client and server implement a Ping service, and perform RPC calls to each other every 5 seconds.
 
 1. Run the server in `examples/simple/server` with `go run main.go`
-2. Run a client (Alice) in `examples/simple/server` with `go run main.go 0` 
-3. Run a client (Bob) in `examples/simple/server` with `go run main.go 1` 
-4. Run a invalid client (Charlie) in `examples/simple/server` with `go run main.go 2`. The server will reject this connection. 
+2. Run a client (Alice) in `examples/simple/server` with `go run main.go 0`
+3. Run a client (Bob) in `examples/simple/server` with `go run main.go 1`
+4. Run a invalid client (Charlie) in `examples/simple/server` with `go run main.go 2`. The server will reject this connection.
 
 While the client's are connected, kill the server and see the client's enter a backoff retry loop. Start the server again and they will reconnect.
 
-## TODO 
+## TODO
 
-- [ ] Many Many Tests
+- [ ] Improve Tests
+- [ ] Return a response status
+- [ ] Figure out a better interface to identify the connection rather than relying on public key
 - [x] Use Protobufs as the message format
 - [x] Server to Node RPC calls
 - [x] Handle Read/Write Limits of the websocket connection
 - [x] Dynamically Update TLS config to add more clients
 - [x] Simple string error handling
-- [ ] Response Status
-- [ ] Figure out a better interface to identify the connection rather than relying on public key
 - [x] Service Definition Generator Plugin
