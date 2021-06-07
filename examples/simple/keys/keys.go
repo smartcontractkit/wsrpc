@@ -64,19 +64,3 @@ func ToStaticSizedBytes(b []byte) (credentials.StaticSizedPublicKey, error) {
 
 	return sb, nil
 }
-
-// _, privServer, _ := ed25519.GenerateKey(nil)
-
-// pubHex := make([]byte, hex.EncodedLen(len(pubServer)))
-// hex.Encode(pubHex, pubServer)
-
-// privHex := make([]byte, hex.EncodedLen(len(privServer)))
-// hex.Encode(privHex, privServer)
-
-// fmt.Println("Pub Bytes: ", pubServer)
-// fmt.Println("Pub: ", string(pubHex))
-// fmt.Println("Priv Bytes: ", privServer)
-// fmt.Println("Priv: ", string(privHex))
-
-// pubKey := make([]byte, hex.DecodedLen(len(ServerPubKey)))
-// hex.Decode(pubKey, []byte(ServerPubKey))

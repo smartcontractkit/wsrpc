@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"log"
 	"math/big"
 )
 
@@ -96,7 +95,6 @@ func VerifyPeerCertificate(pubs []ed25519.PublicKey) func(rawCerts [][]byte, ver
 			return fmt.Errorf("unknown public key on cert %x", pk)
 		}
 
-		log.Printf("[TLS] Received good certificate")
 		return nil
 	}
 }

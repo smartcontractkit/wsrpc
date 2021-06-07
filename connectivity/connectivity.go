@@ -1,10 +1,6 @@
 // Package connectivity defines connectivity semantics.
 package connectivity
 
-import (
-	"log"
-)
-
 // State indicates the state of connectivity.
 type State int
 
@@ -21,8 +17,7 @@ func (s State) String() string {
 	case Shutdown:
 		return "SHUTDOWN"
 	default:
-		log.Printf("unknown connectivity state: %d", s)
-		return "Invalid-State"
+		return "INVALID"
 	}
 }
 

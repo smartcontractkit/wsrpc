@@ -78,7 +78,7 @@ func (s *WebsocketServer) Close() error {
 		return nil
 	}
 
-	log.Println("[Transport] Closing transport")
+	log.Println("[wsrpc] closing transport")
 
 	s.state = closing
 
@@ -123,7 +123,7 @@ func (s *WebsocketServer) readPump() {
 		// allowing us to clean up the goroutine.
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[Transport] error: %v", err)
+				log.Printf("[wsrpc] error: %v", err)
 			}
 			break
 		}
@@ -147,8 +147,6 @@ func (s *WebsocketServer) writePump() {
 			s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 			err := s.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
-				log.Printf("Some error ocurred writing: %v", err)
-
 				return
 			}
 		case <-s.interrupt:
@@ -161,7 +159,7 @@ func (s *WebsocketServer) writePump() {
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			)
 			if err != nil {
-				log.Println("write close:", err)
+				log.Println("[wsrpc] error:", err)
 				return
 			}
 			select {

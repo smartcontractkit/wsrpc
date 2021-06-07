@@ -113,7 +113,7 @@ func (c *WebsocketClient) readPump() {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[Transport] Unexpected Close Error: %v", err)
+				log.Printf("[wsrpc] error: %v", err)
 			}
 			return
 		}
@@ -147,13 +147,13 @@ func (c *WebsocketClient) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
-				log.Printf("[Transport] Error ocurred writing: %v", err)
+				log.Printf("[wsrpc] error: %v", err)
 				return
 			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("[Transport] Error ocurred pinging: %v", err)
+				log.Printf("[wsrpc] error: %v", err)
 				return
 			}
 		case <-c.interrupt:
@@ -166,7 +166,6 @@ func (c *WebsocketClient) writePump() {
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			)
 			if err != nil {
-				log.Println("write close:", err)
 				return
 			}
 			select {
