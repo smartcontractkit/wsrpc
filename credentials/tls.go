@@ -14,13 +14,13 @@ type StaticSizedPublicKey [ed25519.PublicKeySize]byte
 
 // NewClientTLSConfig uses the private key and public keys to construct a mutual
 // TLS config for the client.
-func NewClientTLSConfig(priv ed25519.PrivateKey, pubs []ed25519.PublicKey) (*tls.Config, error) {
+func NewClientTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config, error) {
 	return newMutualTLSConfig(priv, pubs)
 }
 
 // NewServerTLSConfig uses the private key and public keys to construct a mutual
 // TLS config for the server.
-func NewServerTLSConfig(priv ed25519.PrivateKey, pubs []ed25519.PublicKey) (*tls.Config, error) {
+func NewServerTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config, error) {
 	c, err := newMutualTLSConfig(priv, pubs)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func NewServerTLSConfig(priv ed25519.PrivateKey, pubs []ed25519.PublicKey) (*tls
 //
 // We provide our own peer certificate verification function to check the
 // certificate's public key matches our list of registered keys.
-func newMutualTLSConfig(priv ed25519.PrivateKey, pubs []ed25519.PublicKey) (*tls.Config, error) {
+func newMutualTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config, error) {
 	cert, err := newMinimalX509Cert(priv)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func newMutualTLSConfig(priv ed25519.PrivateKey, pubs []ed25519.PublicKey) (*tls
 		MaxVersion: tls.VersionTLS13,
 		MinVersion: tls.VersionTLS13,
 
-		VerifyPeerCertificate: VerifyPeerCertificate(pubs),
+		VerifyPeerCertificate: pubs.VerifyPeerCertificate(),
 	}, nil
 }
 
@@ -74,9 +74,12 @@ func newMinimalX509Cert(priv ed25519.PrivateKey) (tls.Certificate, error) {
 	}, nil
 }
 
+// PublicKeys wraps a slice of keys so we can update the keys dynamically.
+type PublicKeys []ed25519.PublicKey
+
 // Verifies that the certificate's public key matches with one of the keys in
 // our list of registered keys.
-func VerifyPeerCertificate(pubs []ed25519.PublicKey) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+func (r *PublicKeys) VerifyPeerCertificate() func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 	return func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
 		if len(rawCerts) != 1 {
 			return fmt.Errorf("required exactly one client certificate")
@@ -90,13 +93,21 @@ func VerifyPeerCertificate(pubs []ed25519.PublicKey) func(rawCerts [][]byte, ver
 			return err
 		}
 
-		ok := isValidPublicKey(pubs, pk)
+		ok := isValidPublicKey(*r, pk)
 		if !ok {
 			return fmt.Errorf("unknown public key on cert %x", pk)
 		}
 
 		return nil
 	}
+}
+
+// Replace replaces the existing keys with new keys. Use this to dynamically
+// update the allowable keys at runtime.
+func (r *PublicKeys) Replace(pubs []ed25519.PublicKey) {
+	*r = PublicKeys(pubs)
+
+	fmt.Println(r)
 }
 
 // isValidPublicKey checks the public key against a list of valid keys.

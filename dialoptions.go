@@ -41,14 +41,16 @@ func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
 // level security credentials (e.g., TLS/SSL).
 func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
+		pubs := credentials.PublicKeys{serverPubKey}
+
 		// Generate the TLS config for the client
-		config, err := credentials.NewClientTLSConfig(privKey, []ed25519.PublicKey{serverPubKey})
+		config, err := credentials.NewClientTLSConfig(privKey, &pubs)
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
-		o.copts.TransportCredentials = credentials.NewTLS(config)
+		o.copts.TransportCredentials = credentials.NewTLS(config, &pubs)
 	})
 }
 

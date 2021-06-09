@@ -317,7 +317,7 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 
 // UpdatePublicKeys updates the list of allowable public keys in the TLS config
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
-	s.opts.creds.Config.VerifyPeerCertificate = credentials.VerifyPeerCertificate(pubKeys)
+	s.opts.creds.PublicKeys.Replace(pubKeys)
 }
 
 // Stop stops the gRPC server. It immediately closes all open
