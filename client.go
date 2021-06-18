@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -128,7 +127,6 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 			// Unmarshal the message
 			msg := &message.Message{}
 			if err := UnmarshalProtoMessage(in, msg); err != nil {
-				log.Fatalln("Failed to parse message:", err)
 				continue
 			}
 
@@ -138,7 +136,7 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 			case *message.Message_Response:
 				cc.handleMessageResponse(ex.Response)
 			default:
-				log.Println("Invalid message type")
+				// log.Println("Invalid message type")
 			}
 		case <-done:
 			return
@@ -165,7 +163,6 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 
 		msg, err := message.NewResponse(r.GetCallId(), v, herr)
 		if err != nil {
-			log.Println(err)
 			return
 		}
 
@@ -235,7 +232,6 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	callID := uuid.NewString()
 	req, err := message.NewRequest(callID, method, args)
 	if err != nil {
-		log.Println(err)
 		return err
 	}
 
@@ -346,7 +342,7 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State) {
 	}
 	ac.state = s
 	ac.stateCh <- s
-	log.Printf("[AddrConn] Connectivity State: %s", s)
+	// log.Printf("[AddrConn] Connectivity State: %s", s)
 }
 
 // resetTransport attempts to connect to the server. If the connection fails,
@@ -370,8 +366,6 @@ func (ac *addrConn) resetTransport() {
 
 		newTr, reconnect, err := ac.createTransport(addr, copts)
 		if err != nil {
-			log.Println(err)
-
 			// After connection failure, the addrConn enters TRANSIENT_FAILURE.
 			ac.mu.Lock()
 			if ac.state == connectivity.Shutdown {
@@ -383,7 +377,7 @@ func (ac *addrConn) resetTransport() {
 
 			// Backoff.
 			timer := time.NewTimer(backoffFor)
-			log.Printf("[AddrConn] Waiting %s to reconnect", backoffFor)
+			// log.Printf("[AddrConn] Waiting %s to reconnect", backoffFor)
 			select {
 			case <-timer.C:
 				// NOOP - This falls through to continue to retry connecting

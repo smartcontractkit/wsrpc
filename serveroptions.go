@@ -2,7 +2,6 @@ package wsrpc
 
 import (
 	"crypto/ed25519"
-	"log"
 
 	"github.com/smartcontractkit/wsrpc/credentials"
 )
@@ -44,7 +43,6 @@ func Creds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOption
 
 		config, err := credentials.NewServerTLSConfig(privKey, &pubs)
 		if err != nil {
-			log.Println(err)
 			return
 		}
 

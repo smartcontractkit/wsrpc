@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"log"
 	"sync"
 	"time"
 
@@ -78,7 +77,7 @@ func (s *WebsocketServer) Close() error {
 		return nil
 	}
 
-	log.Println("[wsrpc] closing transport")
+	// log.Println("[wsrpc] closing transport")
 
 	s.state = closing
 
@@ -123,7 +122,7 @@ func (s *WebsocketServer) readPump() {
 		// allowing us to clean up the goroutine.
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[wsrpc] error: %v", err)
+				// log.Printf("[wsrpc] error: %v", err)
 			}
 			break
 		}
@@ -159,7 +158,7 @@ func (s *WebsocketServer) writePump() {
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			)
 			if err != nil {
-				log.Println("[wsrpc] error:", err)
+				// log.Println("[wsrpc] error:", err)
 				return
 			}
 			select {

@@ -3,7 +3,6 @@ package transport
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -113,7 +112,7 @@ func (c *WebsocketClient) readPump() {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("[wsrpc] error: %v", err)
+				// log.Printf("[wsrpc] error: %v", err)
 			}
 			return
 		}
@@ -147,13 +146,13 @@ func (c *WebsocketClient) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
-				log.Printf("[wsrpc] error: %v", err)
+				// log.Printf("[wsrpc] error: %v", err)
 				return
 			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("[wsrpc] error: %v", err)
+				// log.Printf("[wsrpc] error: %v", err)
 				return
 			}
 		case <-c.interrupt:

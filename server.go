@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"errors"
-	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -91,18 +90,17 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("[Server] Establishing Websocket connection")
+	// log.Println("[Server] Establishing Websocket connection")
 
 	pubKey, err := s.ensureSingleClientConnection(r.TLS.PeerCertificates[0])
 	if err != nil {
-		log.Print("[Server] error: ", err)
+		// log.Print("[Server] error: ", err)
 		return
 	}
 
 	// Upgrade the websocket connection
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("[Server] error: upgrade", err)
 		return
 	}
 
@@ -122,7 +120,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	// Initialize the transport
 	tr, err := transport.NewServerTransport(conn, config, onClose)
 	if err != nil {
-		log.Println("Could not initialize server transport")
+		// log.Println("Could not initialize server transport")
 		return
 	}
 
@@ -136,9 +134,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-done:
-		log.Println("Closing Handler: Connection dropped")
+		// log.Println("Closing Handler: Connection dropped")
 	case <-s.quit.Done():
-		log.Println("Closing Handler: Shutdown")
+		// log.Println("Closing Handler: Shutdown")
 	}
 }
 
@@ -171,8 +169,6 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 			// Unmarshal the message
 			msg := &message.Message{}
 			if err := UnmarshalProtoMessage(in, msg); err != nil {
-				log.Println("Failed to parse message:", err)
-
 				continue
 			}
 
@@ -183,7 +179,7 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 			case *message.Message_Response:
 				s.handleMessageResponse(ex.Response)
 			default:
-				log.Println("Invalid message type")
+				// log.Println("Invalid message type")
 			}
 		case <-done:
 			return
@@ -212,13 +208,11 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 
 		msg, err := message.NewResponse(r.GetCallId(), v, herr)
 		if err != nil {
-			log.Println(err)
 			return
 		}
 
 		replyMsg, err := MarshalProtoMessage(msg)
 		if err != nil {
-			log.Println(err)
 			return
 		}
 
@@ -267,7 +261,6 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 	callID := uuid.NewString()
 	msg, err := message.NewRequest(callID, method, args)
 	if err != nil {
-		log.Println(err)
 		return err
 	}
 
@@ -323,7 +316,7 @@ func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 // Stop stops the gRPC server. It immediately closes all open
 // connections and listeners.
 func (s *Server) Stop() {
-	log.Println("[Server] Stopping Server")
+	// log.Println("[Server] Stopping Server")
 	s.quit.Fire()
 	defer func() {
 		s.done.Fire()
