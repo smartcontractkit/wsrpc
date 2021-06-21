@@ -35,8 +35,6 @@ const version = "0.0.1"
 
 var clientServices strFlags
 
-// var requireUnimplemented *bool
-
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()

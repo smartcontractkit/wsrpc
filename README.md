@@ -4,7 +4,7 @@ Establishes a persistent bi-directional communication channel using mTLS and web
 
 ## Set up
 
-In order to generate service definition you will need the wsrpc protoc plugin.
+In order to generate a service definition you will need the wsrpc protoc plugin.
 
 Build the protoc plugin
 
@@ -34,14 +34,14 @@ Implement handlers for the server
 type pingServer struct {}
 
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-    // Extracts the connection client's public key.
-    // You can use this to identify the client
+	// Extracts the connection client's public key.
+	// You can use this to identify the client
 	pubKey, ok := metadata.PublicKeyFromContext(ctx)
 	if !ok {
 		return nil, errors.New("could not extract public key")
 	}
 
-    fmt.Println(pubKey)
+	fmt.Println(pubKey)
 
 	return &pb.PingResponse{
 		Body: "Pong",
@@ -49,12 +49,12 @@ func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRes
 }
 ```
 
-Initialize a server with the server's private key and a slice of all the allowable public keys.
+Initialize a server with the server's private key and a slice of allowable public keys.
 
 ```go
 lis, err := net.Listen("tcp", "127.0.0.1:1337")
 if err != nil {
-    log.Fatalf("[MAIN] failed to listen: %v", err)
+	log.Fatalf("[MAIN] failed to listen: %v", err)
 }
 s := wsrpc.NewServer(wsrpc.Creds(privKey, pubKeys))
 // Register the ping server implementation with the wsrpc server
@@ -68,7 +68,7 @@ Initialize a client with the client's private key and the server's public key
 ```go
 conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, serverPubKey))
 if err != nil {
-    log.Fatalln(err)
+	log.Fatalln(err)
 }
 defer conn.Close()
 
@@ -93,12 +93,12 @@ func (c *pingClient) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRes
 }
 ```
 
-Initialize a server with the server's private key and a slice of all the allowable public keys.
+Initialize a server with the server's private key and a slice of allowable public keys.
 
 ```go
 lis, err := net.Listen("tcp", "127.0.0.1:1337")
 if err != nil {
-    log.Fatalf("[MAIN] failed to listen: %v", err)
+	log.Fatalf("[MAIN] failed to listen: %v", err)
 }
 s := wsrpc.NewServer(wsrpc.Creds(privKey, pubKeys))
 c := pb.NewPingClient(s)
@@ -116,7 +116,7 @@ Initialize a client with the client's private key and the server's public key
 ```go
 conn, err := wsrpc.Dial("127.0.0.1:1337", wsrpc.WithTransportCreds(privKey, serverPubKey))
 if err != nil {
-    log.Fatalln(err)
+	log.Fatalln(err)
 }
 defer conn.Close()
 
@@ -140,6 +140,7 @@ While the client's are connected, kill the server and see the client's enter a b
 - [ ] Improve Tests
 - [ ] Return a response status
 - [ ] Figure out a better interface to identify the connection rather than relying on public key
+- [ ] Add a Blocking DialOption
 - [x] Use Protobufs as the message format
 - [x] Server to Node RPC calls
 - [x] Handle Read/Write Limits of the websocket connection
