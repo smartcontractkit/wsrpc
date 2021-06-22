@@ -28,6 +28,7 @@
   ctx := peer.NewCallContext(context.Background(), pubKey)
   res, err := c.Gnip(ctx, &pb.GnipRequest{Body: "Gnip"})
   ```
+* Add a `WithBlock` DialOption which blocks the caller of Dial until the underlying connection is up.
 
 # 0.1.1
 

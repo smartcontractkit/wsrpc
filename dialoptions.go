@@ -14,6 +14,7 @@ import (
 type dialOptions struct {
 	copts transport.ConnectOptions
 	bs    backoff.Strategy
+	block bool
 }
 
 // DialOption configures how we set up the connection.
@@ -51,6 +52,15 @@ func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicK
 		}
 
 		o.copts.TransportCredentials = credentials.NewTLS(config, &pubs)
+	})
+}
+
+// WithBlock returns a DialOption which makes caller of Dial blocks until the
+// underlying connection is up. Without this, Dial returns immediately and
+// connecting the server happens in background.
+func WithBlock() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.block = true
 	})
 }
 

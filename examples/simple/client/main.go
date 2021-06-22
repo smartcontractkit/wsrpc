@@ -28,7 +28,10 @@ func main() {
 	privKey := keys.FromHex(keys.Clients[cidx].PrivKey)
 	serverPubKey := keys.FromHex(keys.ServerPubKey)
 
-	conn, err := wsrpc.Dial("127.0.0.1:1338", wsrpc.WithTransportCreds(privKey, serverPubKey))
+	conn, err := wsrpc.Dial("127.0.0.1:1338",
+		wsrpc.WithTransportCreds(privKey, serverPubKey),
+		wsrpc.WithBlock(),
+	)
 	if err != nil {
 		log.Fatalln(err)
 	}

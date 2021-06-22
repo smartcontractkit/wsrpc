@@ -140,4 +140,4 @@ While the client's are connected, kill the server and see the client's enter a b
 
 - [ ] Improve Tests
 - [ ] Return a response status
-- [ ] Add a Blocking DialOption
+- [x] Add a Blocking DialOption

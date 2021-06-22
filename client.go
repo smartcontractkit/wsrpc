@@ -49,7 +49,10 @@ type ClientConn struct {
 	service *serviceInfo
 }
 
-// Dial creates a client connection to the given target.
+// Dial creates a client connection to the given target. By default, it's
+// a non-blocking dial (the function won't wait for connections to be
+// established, and connecting happens in the background). To make it a blocking
+// dial, use WithBlock() dial option.
 func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 	cc := &ClientConn{
 		ctx:         context.Background(),
@@ -73,6 +76,14 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 
 	addrConn.connect()
 	cc.conn = addrConn
+
+	if cc.dopts.block {
+		for {
+			if addrConn.state == connectivity.Ready {
+				break
+			}
+		}
+	}
 
 	return cc, nil
 }
