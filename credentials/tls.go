@@ -128,7 +128,7 @@ func PubKeyFromCert(cert *x509.Certificate) (StaticSizedPublicKey, error) {
 		return StaticSizedPublicKey{}, nil
 	}
 
-	return staticallySizedEd25519PublicKey(pubKey)
+	return ToStaticallySizedPublicKey(pubKey)
 }
 
 // pubKeyFromCert returns an ed25519 public key extracted from the certificate.
@@ -145,9 +145,9 @@ func pubKeyFromCert(cert *x509.Certificate) (ed25519.PublicKey, error) {
 	return pub, nil
 }
 
-// staticallySizedEd25519PublicKey converts an ed25519 public key into a
-// statically sized byte array.
-func staticallySizedEd25519PublicKey(pubKey ed25519.PublicKey) (StaticSizedPublicKey, error) {
+// ToStaticallySizedPublicKey converts an ed25519 public key into a statically
+// sized byte array.
+func ToStaticallySizedPublicKey(pubKey ed25519.PublicKey) (StaticSizedPublicKey, error) {
 	var result [ed25519.PublicKeySize]byte
 
 	if ed25519.PublicKeySize != copy(result[:], pubKey) {

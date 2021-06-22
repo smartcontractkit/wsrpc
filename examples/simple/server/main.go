@@ -15,7 +15,7 @@ import (
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/examples/simple/keys"
 	pb "github.com/smartcontractkit/wsrpc/examples/simple/ping"
-	"github.com/smartcontractkit/wsrpc/metadata"
+	"github.com/smartcontractkit/wsrpc/peer"
 )
 
 func main() {
@@ -76,7 +76,7 @@ func main() {
 func pingClientsContinuously(c pb.GnipClient, clientIdentities map[credentials.StaticSizedPublicKey]string) {
 	for {
 		for pubKey, name := range clientIdentities {
-			ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
+			ctx := peer.NewCallContext(context.Background(), pubKey)
 			res, err := c.Gnip(ctx, &pb.GnipRequest{Body: "Gnip"})
 			if err != nil {
 				if errors.Is(err, wsrpc.ErrNotConnected) {
@@ -105,11 +105,11 @@ type pingServer struct {
 
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
 	resBody := "pong"
-	pubKey, ok := metadata.PublicKeyFromContext(ctx)
+	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return nil, errors.New("could not extract public key")
 	}
-	name := s.clients[pubKey]
+	name := s.clients[p.PublicKey]
 
 	log.Printf("[RPC SERVICE HANDLER] %s (%s) -> %s", req.Body, name, resBody)
 

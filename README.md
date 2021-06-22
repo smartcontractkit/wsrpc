@@ -36,10 +36,11 @@ type pingServer struct {}
 func (s *pingServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
 	// Extracts the connection client's public key.
 	// You can use this to identify the client
-	pubKey, ok := metadata.PublicKeyFromContext(ctx)
+	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return nil, errors.New("could not extract public key")
 	}
+	pubKey := p.PublicKey
 
 	fmt.Println(pubKey)
 
@@ -107,7 +108,7 @@ s.Serve(lis)
 
 // Call the RPC method with the pub key so we know which connection to send it to
 // otherwise it will error.
-ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
+ctx := peer.NewCallContext(context.Background(), pubKey)
 c.Ping(ctx, &pb.PingRequest{Body: "Ping"})
 ```
 
@@ -139,11 +140,4 @@ While the client's are connected, kill the server and see the client's enter a b
 
 - [ ] Improve Tests
 - [ ] Return a response status
-- [ ] Figure out a better interface to identify the connection rather than relying on public key
 - [ ] Add a Blocking DialOption
-- [x] Use Protobufs as the message format
-- [x] Server to Node RPC calls
-- [x] Handle Read/Write Limits of the websocket connection
-- [x] Dynamically Update TLS config to add more clients
-- [x] Simple string error handling
-- [x] Service Definition Generator Plugin

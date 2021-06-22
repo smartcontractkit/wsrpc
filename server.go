@@ -16,7 +16,7 @@ import (
 	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
-	"github.com/smartcontractkit/wsrpc/metadata"
+	"github.com/smartcontractkit/wsrpc/peer"
 )
 
 var ErrNotConnected = errors.New("client not connected")
@@ -202,8 +202,8 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 			return nil
 		}
 
-		// Inject the public key into the context so the handler's can use it
-		ctx := context.WithValue(context.Background(), metadata.PublicKeyCtxKey, pubKey)
+		// Inject the peer's public keey into the context so the handler's can use it
+		ctx := peer.NewContext(context.Background(), &peer.Peer{PublicKey: pubKey})
 		v, herr := md.Handler(s.service.serviceImpl, ctx, dec)
 
 		msg, err := message.NewResponse(r.GetCallId(), v, herr)
@@ -274,10 +274,11 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 	s.mu.Unlock()
 
 	// Extract the public key from context
-	pubKey, ok := metadata.PublicKeyFromContext(ctx)
+	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return errors.New("could not extract public key")
 	}
+	pubKey := p.PublicKey
 
 	err = s.sendMsg(pubKey, req)
 	if err != nil {
