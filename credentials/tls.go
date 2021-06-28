@@ -106,8 +106,6 @@ func (r *PublicKeys) VerifyPeerCertificate() func(rawCerts [][]byte, verifiedCha
 // update the allowable keys at runtime.
 func (r *PublicKeys) Replace(pubs []ed25519.PublicKey) {
 	*r = PublicKeys(pubs)
-
-	fmt.Println(r)
 }
 
 // isValidPublicKey checks the public key against a list of valid keys.

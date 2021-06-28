@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -60,6 +61,16 @@ func main() {
 	done := make(chan bool, 1)
 
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	// Print incoming connections
+	go func() {
+		for {
+			notifyCh := s.GetConnectionNotifyChan()
+			<-notifyCh
+
+			fmt.Println("Connected to:", s.GetConnectedPeerPublicKeys())
+		}
+	}()
 
 	go func() {
 		<-sigs

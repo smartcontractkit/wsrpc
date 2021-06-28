@@ -3,7 +3,6 @@ package wsrpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -95,8 +94,6 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 			if !cc.WaitForStateChange(ctx, s) {
 				return nil, ctx.Err()
 			}
-
-			fmt.Println("Changed!", s)
 		}
 	}
 
@@ -518,7 +515,6 @@ type connectivityStateManager struct {
 // If there's a change it notifies goroutines waiting on state change to
 // happen.
 func (csm *connectivityStateManager) updateState(state connectivity.State) {
-	fmt.Println("Updating State: ", state)
 	csm.mu.Lock()
 	defer csm.mu.Unlock()
 	if csm.state == connectivity.Shutdown {
@@ -530,7 +526,6 @@ func (csm *connectivityStateManager) updateState(state connectivity.State) {
 	csm.state = state
 	if csm.notifyChan != nil {
 		// There are other goroutines waiting on this channel.
-		fmt.Println("Closing notify channel")
 		close(csm.notifyChan)
 		csm.notifyChan = nil
 	}

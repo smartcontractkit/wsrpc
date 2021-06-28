@@ -28,9 +28,10 @@ type Server struct {
 	httpsrv *http.Server
 
 	opts serverOptions
-	// Holds a list of the open connections mapped to a buffered channel of
-	// outbound messages.
-	conns map[credentials.StaticSizedPublicKey]transport.ServerTransport
+
+	// Manages the open client connections
+	connMgr *connectionsManager
+
 	// Parameters for upgrading a websocket connection
 	upgrader websocket.Upgrader
 	// The RPC service definition
@@ -58,7 +59,7 @@ func NewServer(opt ...ServerOption) *Server {
 			ReadBufferSize:  opts.readBufferSize,
 			WriteBufferSize: opts.writeBufferSize,
 		},
-		conns:       map[credentials.StaticSizedPublicKey]transport.ServerTransport{},
+		connMgr:     newConnectionsManager(),
 		methodCalls: map[string]chan<- *message.Response{},
 		quit:        wsrpcsync.NewEvent(),
 		done:        wsrpcsync.NewEvent(),
@@ -110,11 +111,8 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 
 	config := &transport.ServerConfig{}
 	onClose := func() {
-		s.mu.Lock()
-		delete(s.conns, pubKey)
-
+		s.connMgr.removeConnection(pubKey)
 		close(done)
-		s.mu.Unlock()
 	}
 
 	// Initialize the transport
@@ -125,9 +123,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Register the transport against the public key
-	s.mu.Lock()
-	s.conns[pubKey] = tr
-	s.mu.Unlock()
+	s.connMgr.registerConnection(pubKey, tr)
 
 	// Start the reader handler
 	go s.handleRead(pubKey, done)
@@ -143,9 +139,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 // Send writes the message to the connection which matches the public key.
 func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 	// Find the transport matching the public key
-	tr, ok := s.conns[pub]
-	if !ok {
-		return ErrNotConnected
+	tr, err := s.connMgr.getTransport(pub)
+	if err != nil {
+		return err
 	}
 
 	tr.Write(msg)
@@ -156,10 +152,8 @@ func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
 func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan struct{}) {
-	s.mu.Lock()
-	tr, ok := s.conns[pubKey]
-	s.mu.Unlock()
-	if !ok {
+	tr, err := s.connMgr.getTransport(pubKey)
+	if err != nil {
 		return
 	}
 
@@ -314,6 +308,23 @@ func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 	s.opts.creds.PublicKeys.Replace(pubKeys)
 }
 
+// GetConnectionNotifyChan gets the connection notification channel.
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
+func (s *Server) GetConnectionNotifyChan() <-chan struct{} {
+	return s.connMgr.getNotifyChan()
+}
+
+// GetConnectedPeerPublicKeys gets the public keys for all peers which are
+// connected.
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
+func (s *Server) GetConnectedPeerPublicKeys() []credentials.StaticSizedPublicKey {
+	return s.connMgr.getConnectionPublicKeys()
+}
+
 // Stop stops the gRPC server. It immediately closes all open
 // connections and listeners.
 func (s *Server) Stop() {
@@ -324,15 +335,13 @@ func (s *Server) Stop() {
 	}()
 
 	s.mu.Lock()
-	conns := s.conns
-	s.conns = nil
+	connMgr := s.connMgr
+	s.connMgr = nil
 	s.mu.Unlock()
 
 	// TODO - Wait for the connections to close cleanly so we can perform a
 	// graceful shutdown.
-	for _, conn := range conns {
-		conn.Close()
-	}
+	connMgr.close()
 }
 
 // Ensure there is only a single connection per public key by checking the
@@ -343,11 +352,10 @@ func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.
 		return pubKey, errors.New("could not extracting public key from certificate")
 	}
 
-	s.mu.Lock()
-	if _, ok := s.conns[pubKey]; ok {
+	_, err = s.connMgr.getTransport(pubKey)
+	if err == nil {
 		return pubKey, errors.New("only one connection allowed per client")
 	}
-	s.mu.Unlock()
 
 	return pubKey, nil
 }
@@ -367,4 +375,84 @@ func (s *Server) registerMethodCall(id string) <-chan *message.Response {
 // This requires a lock on cc.mu.
 func (s *Server) removeMethodCall(id string) {
 	delete(s.methodCalls, id)
+}
+
+// connectionsManager manages the active clients connections
+type connectionsManager struct {
+	mu sync.Mutex
+	// Holds a list of the open connections mapped to a buffered channel of
+	// outbound messages.
+	conns map[credentials.StaticSizedPublicKey]transport.ServerTransport
+	// Notifies receivers on this channel when the list of connections change
+	notifyChan chan struct{}
+}
+
+func newConnectionsManager() *connectionsManager {
+	return &connectionsManager{
+		conns: map[credentials.StaticSizedPublicKey]transport.ServerTransport{},
+	}
+}
+
+func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey) (transport.ServerTransport, error) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	tr, ok := cm.conns[key]
+	if !ok {
+		return nil, ErrNotConnected
+	}
+
+	return tr, nil
+}
+
+func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPublicKey, value transport.ServerTransport) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.conns[key] = value
+
+	if cm.notifyChan != nil {
+		// There are other goroutines waiting on this channel.
+		close(cm.notifyChan)
+		cm.notifyChan = nil
+	}
+}
+
+func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublicKey) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	delete(cm.conns, key)
+
+	if cm.notifyChan != nil {
+		// There are other goroutines waiting on this channel.
+		close(cm.notifyChan)
+		cm.notifyChan = nil
+	}
+}
+
+// getConnectedPublicKeys gets the public keys of the active connections
+func (cm *connectionsManager) getConnectionPublicKeys() []credentials.StaticSizedPublicKey {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	keys := make([]credentials.StaticSizedPublicKey, 0, len(cm.conns))
+	for k := range cm.conns {
+		keys = append(keys, k)
+	}
+
+	return keys
+}
+
+func (cm *connectionsManager) getNotifyChan() <-chan struct{} {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	if cm.notifyChan == nil {
+		cm.notifyChan = make(chan struct{})
+	}
+	return cm.notifyChan
+}
+
+func (cm *connectionsManager) close() {
+	for _, conn := range cm.conns {
+		conn.Close()
+	}
 }
