@@ -37,6 +37,8 @@ type ClientConn struct {
 	target string
 	// A channel which receives updates when connectivity state changes
 	csCh <-chan connectivity.State
+	// Manages the connectivity state.
+	csMgr *connectivityStateManager
 
 	dopts dialOptions
 	conn  *addrConn
@@ -49,14 +51,19 @@ type ClientConn struct {
 	service *serviceInfo
 }
 
+func Dial(target string, opts ...DialOption) (*ClientConn, error) {
+	return DialWithContext(context.Background(), target, opts...)
+}
+
 // Dial creates a client connection to the given target. By default, it's
 // a non-blocking dial (the function won't wait for connections to be
 // established, and connecting happens in the background). To make it a blocking
 // dial, use WithBlock() dial option.
-func Dial(target string, opts ...DialOption) (*ClientConn, error) {
+func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*ClientConn, error) {
 	cc := &ClientConn{
 		ctx:         context.Background(),
 		target:      target,
+		csMgr:       &connectivityStateManager{},
 		dopts:       defaultDialOptions(),
 		methodCalls: map[string]chan<- *message.Response{},
 	}
@@ -79,13 +86,34 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 
 	if cc.dopts.block {
 		for {
-			if addrConn.state == connectivity.Ready {
+			s := cc.csMgr.getState()
+			if s == connectivity.Ready {
 				break
 			}
+
+			// Wait for a state change to re run the for loop
+			if !cc.WaitForStateChange(ctx, s) {
+				return nil, ctx.Err()
+			}
+
+			fmt.Println("Changed!", s)
 		}
 	}
 
 	return cc, nil
+}
+
+func (cc *ClientConn) WaitForStateChange(ctx context.Context, sourceState connectivity.State) bool {
+	ch := cc.csMgr.getNotifyChan()
+	if cc.csMgr.getState() != sourceState {
+		return true
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-ch:
+		return true
+	}
 }
 
 // newAddrConn creates an addrConn for the addr and sets it to cc.conn.
@@ -105,19 +133,32 @@ func (cc *ClientConn) newAddrConn(addr string) (*addrConn, error) {
 	cc.csCh = csCh
 	cc.mu.Unlock()
 
+	go cc.listenForConnectivityChange()
 	go cc.listenForRead()
 
 	return ac, nil
+}
+
+// listenForConnectivityChange listens for the addrConn's connectivity to change
+// and updates the ClientConn ConnectivityStateManager.
+func (cc *ClientConn) listenForConnectivityChange() {
+	for {
+		s := <-cc.csCh
+
+		cc.csMgr.updateState(s)
+	}
 }
 
 // listenForRead listens for the connectivty state to be ready and enables the
 // read handler
 func (cc *ClientConn) listenForRead() {
 	for {
-		s := <-cc.csCh
+		notifyChan := cc.csMgr.getNotifyChan()
+		<-notifyChan
+
+		s := cc.csMgr.state
 
 		var done chan struct{}
-
 		if s == connectivity.Ready {
 			done := make(chan struct{})
 			go cc.handleRead(done)
@@ -393,7 +434,6 @@ func (ac *addrConn) resetTransport() {
 			case <-timer.C:
 				// NOOP - This falls through to continue to retry connecting
 			case <-ac.ctx.Done():
-				fmt.Println("Context Cancelled")
 				timer.Stop()
 				return
 			}
@@ -465,4 +505,48 @@ func (ac *addrConn) teardown() {
 	}
 
 	ac.mu.Unlock()
+}
+
+// connectivityStateManager keeps the connectivity.State of ClientConn.
+type connectivityStateManager struct {
+	mu         sync.Mutex
+	state      connectivity.State
+	notifyChan chan struct{}
+}
+
+// updateState updates the connectivity.State of ClientConn.
+// If there's a change it notifies goroutines waiting on state change to
+// happen.
+func (csm *connectivityStateManager) updateState(state connectivity.State) {
+	fmt.Println("Updating State: ", state)
+	csm.mu.Lock()
+	defer csm.mu.Unlock()
+	if csm.state == connectivity.Shutdown {
+		return
+	}
+	if csm.state == state {
+		return
+	}
+	csm.state = state
+	if csm.notifyChan != nil {
+		// There are other goroutines waiting on this channel.
+		fmt.Println("Closing notify channel")
+		close(csm.notifyChan)
+		csm.notifyChan = nil
+	}
+}
+
+func (csm *connectivityStateManager) getState() connectivity.State {
+	csm.mu.Lock()
+	defer csm.mu.Unlock()
+	return csm.state
+}
+
+func (csm *connectivityStateManager) getNotifyChan() <-chan struct{} {
+	csm.mu.Lock()
+	defer csm.mu.Unlock()
+	if csm.notifyChan == nil {
+		csm.notifyChan = make(chan struct{})
+	}
+	return csm.notifyChan
 }
