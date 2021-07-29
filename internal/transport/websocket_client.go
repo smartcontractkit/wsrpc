@@ -89,7 +89,6 @@ func (c *WebsocketClient) Close() error {
 
 // start run readPump in a goroutine and waits on writePump.
 func (c WebsocketClient) start() {
-	defer c.Close()
 	defer c.onClose()
 
 	// Set up reader
