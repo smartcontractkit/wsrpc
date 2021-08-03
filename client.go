@@ -92,6 +92,7 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 
 			// Wait for a state change to re run the for loop
 			if !cc.WaitForStateChange(ctx, s) {
+				addrConn.cancel()
 				return nil, ctx.Err()
 			}
 		}
