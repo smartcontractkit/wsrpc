@@ -434,7 +434,7 @@ func (cm *connectionsManager) getConnectionPublicKeys() []credentials.StaticSize
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
-	keys := make([]credentials.StaticSizedPublicKey, 0, len(cm.conns))
+	keys := []credentials.StaticSizedPublicKey{}
 	for k := range cm.conns {
 		keys = append(keys, k)
 	}
