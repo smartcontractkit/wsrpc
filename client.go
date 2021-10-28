@@ -114,6 +114,11 @@ func (cc *ClientConn) WaitForStateChange(ctx context.Context, sourceState connec
 	}
 }
 
+// GetState gets the current connectivity state
+func (cc *ClientConn) GetState() connectivity.State {
+	return cc.csMgr.getState()
+}
+
 // newAddrConn creates an addrConn for the addr and sets it to cc.conn.
 func (cc *ClientConn) newAddrConn(addr string) (*addrConn, error) {
 	csCh := make(chan connectivity.State)
