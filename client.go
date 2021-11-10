@@ -3,6 +3,8 @@ package wsrpc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -77,10 +79,12 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 
 	addrConn, err := cc.newAddrConn(target)
 	if err != nil {
-		return nil, errors.New("could not establish a connection")
+		return nil, fmt.Errorf("could not establish a connection: %w", err)
 	}
 
-	addrConn.connect()
+	if err = addrConn.connect(); err != nil {
+		return nil, fmt.Errorf("error connecting: %w", err)
+	}
 	cc.conn = addrConn
 
 	if cc.dopts.block {
@@ -226,7 +230,9 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 			return
 		}
 
-		cc.conn.transport.Write(replyMsg)
+		if err := cc.conn.transport.Write(replyMsg); err != nil {
+			log.Printf("error writing to transport: %s", err)
+		}
 	}
 }
 
@@ -299,7 +305,9 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	wait := cc.registerMethodCall(callID)
 	cc.mu.Unlock()
 
-	cc.conn.transport.Write(reqB)
+	if err := cc.conn.transport.Write(reqB); err != nil {
+		return err
+	}
 
 	// Wait for the response
 	select {

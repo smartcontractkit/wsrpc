@@ -17,7 +17,8 @@ func Test_MarshalUnmarshalProtoMessage(t *testing.T) {
 	require.NoError(t, err)
 
 	actual := &message.Message{}
-	UnmarshalProtoMessage(b, actual)
+	err = UnmarshalProtoMessage(b, actual)
+	require.NoError(t, err)
 
 	assert.Equal(t, v, actual)
 

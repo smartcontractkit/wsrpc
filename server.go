@@ -79,6 +79,8 @@ func (s *Server) Serve(lis net.Listener) {
 		TLSConfig: s.opts.creds.Config,
 	}
 	http.HandleFunc("/", s.wshandler)
+
+	//nolint:errcheck
 	go httpsrv.ServeTLS(lis, "", "")
 	defer httpsrv.Close()
 
@@ -154,7 +156,9 @@ func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 		return err
 	}
 
-	tr.Write(msg)
+	if err := tr.Write(msg); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -220,7 +224,9 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 			return
 		}
 
-		s.sendMsg(pubKey, replyMsg)
+		if err := s.sendMsg(pubKey, replyMsg); err != nil {
+			log.Printf("error sending message: %s", err)
+		}
 	}
 }
 
