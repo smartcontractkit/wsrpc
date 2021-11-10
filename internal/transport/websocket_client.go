@@ -130,7 +130,10 @@ func (c *WebsocketClient) writePump() {
 
 	// Pong Reply Handler
 	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		if err := c.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -140,8 +143,10 @@ func (c *WebsocketClient) writePump() {
 			// When the read detects a websocket closure, it will close the done
 			// channel so we can exit
 			return
-		case msg := <-c.write:
-			// Write the message
+		case msg := <-c.write: // Write the message
+			// Any error due to a closed connection will be immediately picked
+			// up in the subsequent network message read or write.
+			//nolint:errcheck
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
@@ -149,6 +154,9 @@ func (c *WebsocketClient) writePump() {
 				return
 			}
 		case <-ticker.C:
+			// Any error due to a closed connection will be immediately picked
+			// up in the subsequent network message read or write.
+			//nolint:errcheck
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				// log.Printf("[wsrpc] error: %v", err)

@@ -112,7 +112,10 @@ func (s *WebsocketServer) readPump() {
 	}()
 
 	s.conn.SetPingHandler(func(string) error {
-		s.conn.SetReadDeadline(time.Now().Add(pongWait))
+		if err := s.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -143,6 +146,9 @@ func (s *WebsocketServer) writePump() {
 			// channel so we can exit.
 			return
 		case msg := <-s.write:
+			// Any error due to a closed connection will be immediately picked
+			// up in the subsequent network message read or write.
+			//nolint:errcheck
 			s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 			err := s.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
