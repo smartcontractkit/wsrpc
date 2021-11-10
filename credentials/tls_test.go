@@ -2,10 +2,11 @@ package credentials
 
 import (
 	"crypto/ed25519"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,7 +70,7 @@ func Test_NewServerTLSConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test an invalid client certificate
-	_, invcpriv, err := ed25519.GenerateKey(nil)
+	_, invcpriv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42)))
 	require.NoError(t, err)
 
 	invccert, err := newMinimalX509Cert(invcpriv)
@@ -80,11 +81,11 @@ func Test_NewServerTLSConfig(t *testing.T) {
 }
 
 func Test_PubKeyFromCert(t *testing.T) {
-	pub, priv, err := ed25519.GenerateKey(nil)
+	pub, priv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42)))
 	require.NoError(t, err)
 
 	template := x509.Certificate{SerialNumber: big.NewInt(0)}
-	encodedCert, err := x509.CreateCertificate(rand.Reader, &template, &template, priv.Public(), priv)
+	encodedCert, err := x509.CreateCertificate(cryptorand.Reader, &template, &template, priv.Public(), priv)
 	require.NoError(t, err)
 
 	cert, err := x509.ParseCertificate(encodedCert)
