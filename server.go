@@ -197,7 +197,7 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 
 // handleMessageRequest looks up the method matching the method name and calls
 // the handler. The connection client's public is injected into the context,
-// so the handler is able to identifer the caller.
+// so the handler is able to identify the caller.
 func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r *message.Request) {
 	methodName := r.GetMethod()
 	if md, ok := s.service.methods[methodName]; ok {
