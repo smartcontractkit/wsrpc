@@ -204,10 +204,8 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 		// Create a decoder function to unmarshal the message
 		dec := func(v interface{}) error {
 			err := UnmarshalProtoMessage(r.GetPayload(), v)
-			if err != nil {
-				return err
-			}
-			return nil
+
+			return err
 		}
 
 		// Inject the peer's public keey into the context so the handler's can use it
