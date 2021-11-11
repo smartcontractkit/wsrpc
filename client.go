@@ -159,19 +159,22 @@ func (cc *ClientConn) listenForConnectivityChange() {
 // listenForRead listens for the connectivty state to be ready and enables the
 // read handler
 func (cc *ClientConn) listenForRead() {
+	var done chan struct{}
 	for {
 		notifyChan := cc.csMgr.getNotifyChan()
 		<-notifyChan
 
 		s := cc.csMgr.state
 
-		var done chan struct{}
 		if s == connectivity.Ready {
-			done := make(chan struct{})
+			if done == nil {
+				done = make(chan struct{})
+			}
 			go cc.handleRead(done)
 		} else {
 			if done != nil {
 				close(done)
+				done = nil
 			}
 		}
 	}
