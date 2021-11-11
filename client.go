@@ -502,9 +502,9 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 // tearDown starts to tear down the addrConn.
 func (ac *addrConn) teardown() {
 	ac.mu.Lock()
+	defer ac.mu.Unlock()
 
 	if ac.state == connectivity.Shutdown {
-		ac.mu.Unlock()
 		return
 	}
 
@@ -517,8 +517,6 @@ func (ac *addrConn) teardown() {
 	if curTr != nil {
 		curTr.Close()
 	}
-
-	ac.mu.Unlock()
 }
 
 // connectivityStateManager keeps the connectivity.State of ClientConn.
@@ -534,6 +532,7 @@ type connectivityStateManager struct {
 func (csm *connectivityStateManager) updateState(state connectivity.State) {
 	csm.mu.Lock()
 	defer csm.mu.Unlock()
+
 	if csm.state == connectivity.Shutdown {
 		return
 	}
@@ -551,14 +550,17 @@ func (csm *connectivityStateManager) updateState(state connectivity.State) {
 func (csm *connectivityStateManager) getState() connectivity.State {
 	csm.mu.Lock()
 	defer csm.mu.Unlock()
+
 	return csm.state
 }
 
 func (csm *connectivityStateManager) getNotifyChan() <-chan struct{} {
 	csm.mu.Lock()
 	defer csm.mu.Unlock()
+
 	if csm.notifyChan == nil {
 		csm.notifyChan = make(chan struct{})
 	}
+
 	return csm.notifyChan
 }
