@@ -214,10 +214,8 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 		// Create a decoder function to unmarshal the message
 		dec := func(v interface{}) error {
 			err := UnmarshalProtoMessage(r.GetPayload(), v)
-			if err != nil {
-				return err
-			}
-			return nil
+
+			return err
 		}
 
 		ctx := context.Background()
