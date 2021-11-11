@@ -123,7 +123,7 @@ func isValidPublicKey(valid []ed25519.PublicKey, pub ed25519.PublicKey) bool {
 func PubKeyFromCert(cert *x509.Certificate) (StaticSizedPublicKey, error) {
 	pubKey, err := pubKeyFromCert(cert)
 	if err != nil {
-		return StaticSizedPublicKey{}, nil
+		return StaticSizedPublicKey{}, err
 	}
 
 	return ToStaticallySizedPublicKey(pubKey)

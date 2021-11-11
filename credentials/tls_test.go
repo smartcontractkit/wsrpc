@@ -3,6 +3,7 @@ package credentials
 import (
 	"crypto/ed25519"
 	cryptorand "crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"math/big"
@@ -95,4 +96,19 @@ func Test_PubKeyFromCert(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.ElementsMatch(t, pub, actual)
+}
+
+func Test_PubKeyFromCert_MustBeEd25519KeyError(t *testing.T) {
+	priv, err := rsa.GenerateKey(cryptorand.Reader, 2048)
+	require.NoError(t, err)
+
+	template := x509.Certificate{SerialNumber: big.NewInt(0)}
+	encodedCert, err := x509.CreateCertificate(cryptorand.Reader, &template, &template, priv.Public(), priv)
+	require.NoError(t, err)
+
+	cert, err := x509.ParseCertificate(encodedCert)
+	require.NoError(t, err)
+
+	_, err = PubKeyFromCert(cert)
+	require.EqualError(t, err, "requires an ed25519 public key")
 }
