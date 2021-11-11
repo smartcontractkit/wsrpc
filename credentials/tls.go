@@ -44,7 +44,7 @@ func newMutualTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config,
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
 
-		// Since our clients use self-signed certs, we skip verficiation here.
+		// Since our clients use self-signed certs, we skip verification here.
 		// Instead, we use VerifyPeerCertificate for our own check
 		InsecureSkipVerify: true,
 

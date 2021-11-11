@@ -156,7 +156,7 @@ func (cc *ClientConn) listenForConnectivityChange() {
 	}
 }
 
-// listenForRead listens for the connectivty state to be ready and enables the
+// listenForRead listens for the connectivity state to be ready and enables the
 // read handler
 func (cc *ClientConn) listenForRead() {
 	var done chan struct{}
@@ -412,7 +412,7 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State) {
 }
 
 // resetTransport attempts to connect to the server. If the connection fails,
-// it will continously attempt reconnection with an exponential backoff.
+// it will continuously attempt reconnection with an exponential backoff.
 func (ac *addrConn) resetTransport() {
 	for i := 0; ; i++ {
 		ac.mu.Lock()
