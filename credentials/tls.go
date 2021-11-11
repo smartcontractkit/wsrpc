@@ -35,6 +35,9 @@ func NewServerTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config,
 //
 // We provide our own peer certificate verification function to check the
 // certificate's public key matches our list of registered keys.
+//
+// Certificates are currently used similarly to GPG keys and only functionally
+// as certificates to support the crypto/tls go module.
 func newMutualTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config, error) {
 	cert, err := newMinimalX509Cert(priv)
 	if err != nil {
@@ -45,7 +48,11 @@ func newMutualTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config,
 		Certificates: []tls.Certificate{cert},
 
 		// Since our clients use self-signed certs, we skip verification here.
-		// Instead, we use VerifyPeerCertificate for our own check
+		// Instead, we use VerifyPeerCertificate for our own check.
+		//
+		// If VerifyPeerCertificate changes to rely on standard x509 certificate
+		// fields (such as, but not limited too CN, expiration date and time)
+		// then it may be necessary to reconsider the use of InsecureSkipVerify.
 		InsecureSkipVerify: true,
 
 		MaxVersion: tls.VersionTLS13,
