@@ -165,15 +165,13 @@ func (c *WebsocketClient) writePump() {
 		case <-c.interrupt:
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			//
-			// TODO - This does not currently shutdown cleanly, as the caller does
-			// not wait for this to complete.
 			err := c.conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			)
 			if err != nil {
 				return
 			}
+			c.conn.Close()
 			select {
 			case <-c.done:
 			case <-time.After(time.Second):

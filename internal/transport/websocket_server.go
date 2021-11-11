@@ -167,6 +167,7 @@ func (s *WebsocketServer) writePump() {
 				// log.Println("[wsrpc] error:", err)
 				return
 			}
+			s.conn.Close()
 			select {
 			case <-s.done:
 			case <-time.After(time.Second):
