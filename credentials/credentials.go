@@ -5,7 +5,7 @@ import (
 )
 
 // TransportCredentials defines the TLS configuration for establishing a
-// connection
+// connection.
 type TransportCredentials struct {
 	Config     *tls.Config
 	PublicKeys *PublicKeys

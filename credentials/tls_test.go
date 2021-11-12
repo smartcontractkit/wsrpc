@@ -71,7 +71,7 @@ func Test_NewServerTLSConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test an invalid client certificate
-	_, invcpriv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42)))
+	_, invcpriv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42))) //nolint:gosec
 	require.NoError(t, err)
 
 	invccert, err := newMinimalX509Cert(invcpriv)
@@ -82,7 +82,7 @@ func Test_NewServerTLSConfig(t *testing.T) {
 }
 
 func Test_PubKeyFromCert(t *testing.T) {
-	pub, priv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42)))
+	pub, priv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42))) //nolint:gosec
 	require.NoError(t, err)
 
 	template := x509.Certificate{SerialNumber: big.NewInt(0)}

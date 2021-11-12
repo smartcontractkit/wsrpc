@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
-	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -23,13 +24,13 @@ var (
 )
 
 // ClientInterface defines the functions clients need to perform an RPC.
-// It is implemented by *ClientConn and *Server
+// It is implemented by *ClientConn and *Server.
 type ClientInterface interface {
 	Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error
 }
 
 // ClientConn represents a virtual connection to a websocket endpoint, to
-// perform and serve RPCs
+// perform and serve RPCs.
 type ClientConn struct {
 	ctx context.Context
 	mu  sync.RWMutex
@@ -77,12 +78,9 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 	// customizable in the dial options.
 	cc.dopts.bs = backoff.DefaultExponential
 
-	addrConn, err := cc.newAddrConn(target)
-	if err != nil {
-		return nil, fmt.Errorf("could not establish a connection: %w", err)
-	}
+	addrConn := cc.newAddrConn(target)
 
-	if err = addrConn.connect(); err != nil {
+	if err := addrConn.connect(); err != nil {
 		return nil, fmt.Errorf("error connecting: %w", err)
 	}
 	cc.conn = addrConn
@@ -97,6 +95,7 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 			// Wait for a state change to re run the for loop
 			if !cc.WaitForStateChange(ctx, s) {
 				addrConn.cancel()
+
 				return nil, ctx.Err()
 			}
 		}
@@ -118,13 +117,13 @@ func (cc *ClientConn) WaitForStateChange(ctx context.Context, sourceState connec
 	}
 }
 
-// GetState gets the current connectivity state
+// GetState gets the current connectivity state.
 func (cc *ClientConn) GetState() connectivity.State {
 	return cc.csMgr.getState()
 }
 
 // newAddrConn creates an addrConn for the addr and sets it to cc.conn.
-func (cc *ClientConn) newAddrConn(addr string) (*addrConn, error) {
+func (cc *ClientConn) newAddrConn(addr string) *addrConn {
 	csCh := make(chan connectivity.State)
 	ac := &addrConn{
 		state:   connectivity.Idle,
@@ -143,7 +142,7 @@ func (cc *ClientConn) newAddrConn(addr string) (*addrConn, error) {
 	go cc.listenForConnectivityChange()
 	go cc.listenForRead()
 
-	return ac, nil
+	return ac
 }
 
 // listenForConnectivityChange listens for the addrConn's connectivity to change
@@ -157,7 +156,7 @@ func (cc *ClientConn) listenForConnectivityChange() {
 }
 
 // listenForRead listens for the connectivity state to be ready and enables the
-// read handler
+// read handler.
 func (cc *ClientConn) listenForRead() {
 	var done chan struct{}
 	for {
@@ -326,6 +325,7 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 		cc.mu.Lock()
 		cc.removeMethodCall(callID)
 		cc.mu.Unlock()
+
 		return errors.New("call timeout")
 	}
 
@@ -378,11 +378,13 @@ func (ac *addrConn) connect() error {
 	ac.mu.Lock()
 	if ac.state == connectivity.Shutdown {
 		ac.mu.Unlock()
+
 		return errConnClosing
 	}
 
 	if ac.state != connectivity.Idle {
 		ac.mu.Unlock()
+
 		return nil
 	}
 
@@ -414,6 +416,7 @@ func (ac *addrConn) resetTransport() {
 		ac.mu.Lock()
 		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
+
 			return
 		}
 
@@ -432,6 +435,7 @@ func (ac *addrConn) resetTransport() {
 			ac.mu.Lock()
 			if ac.state == connectivity.Shutdown {
 				ac.mu.Unlock()
+
 				return
 			}
 			ac.updateConnectivityState(connectivity.TransientFailure)
@@ -445,8 +449,10 @@ func (ac *addrConn) resetTransport() {
 				// NOOP - This falls through to continue to retry connecting
 			case <-ac.ctx.Done():
 				timer.Stop()
+
 				return
 			}
+
 			continue
 		}
 
@@ -455,6 +461,7 @@ func (ac *addrConn) resetTransport() {
 		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
 			newTr.Close()
+
 			return
 		}
 		ac.transport = newTr

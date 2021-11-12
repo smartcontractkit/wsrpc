@@ -27,6 +27,7 @@ func (e *Event) Fire() bool {
 		close(e.c)
 		ret = true
 	})
+
 	return ret
 }
 

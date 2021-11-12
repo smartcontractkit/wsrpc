@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
 	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
@@ -47,11 +48,15 @@ func NewClientTransport(ctx context.Context, addr string, opts ConnectOptions, o
 	return newWebsocketClient(ctx, addr, opts, onClose)
 }
 
-// state of transport
+// state of transport.
 type transportState int
 
 const (
-	reachable transportState = iota
+	// The default transport state.
+	//
+	// nolint is required because we don't actually use the var anywhere,
+	// but it does represent a reachable transport.
+	reachable transportState = iota //nolint:deadcode,varcheck
 	closing
 )
 

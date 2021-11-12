@@ -3,9 +3,10 @@ package wsrpc
 import (
 	"testing"
 
-	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/smartcontractkit/wsrpc/internal/message"
 )
 
 func Test_MarshalUnmarshalProtoMessage(t *testing.T) {

@@ -57,5 +57,6 @@ func marshalProtoMessage(v interface{}) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("failed to marshal, message is %T, want proto.Message", v)
 	}
+
 	return proto.Marshal(vv)
 }
