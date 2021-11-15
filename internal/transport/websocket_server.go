@@ -107,7 +107,7 @@ func (s *WebsocketServer) pingHandler(message string) error {
 		return err
 	}
 
-	err := s.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(time.Second))
+	err := s.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(s.writeTimeout))
 	if err == websocket.ErrCloseSent {
 		return nil
 	} else if e, ok := err.(net.Error); ok && e.Temporary() {
