@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -109,11 +110,12 @@ func (s *WebsocketServer) pingHandler(message string) error {
 	}
 
 	err := s.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(s.writeTimeout))
-	if err == websocket.ErrCloseSent {
+	if errors.Is(err, websocket.ErrCloseSent) {
 		return nil
-	} else if e, ok := err.(net.Error); ok && e.Temporary() {
+	} else if e, ok := err.(net.Error); ok && e.Temporary() { // nolint (we can't really use errors.As() since net.Error is an interface.)
 		return nil
 	}
+
 	return err
 }
 
