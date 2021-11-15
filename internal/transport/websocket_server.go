@@ -1,6 +1,8 @@
 package transport
 
 import (
+	"errors"
+	"net"
 	"sync"
 	"time"
 
@@ -102,6 +104,21 @@ func (s *WebsocketServer) start() {
 	s.writePump()
 }
 
+func (s *WebsocketServer) pingHandler(message string) error {
+	if err := s.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
+		return err
+	}
+
+	err := s.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(s.writeTimeout))
+	if errors.Is(err, websocket.ErrCloseSent) {
+		return nil
+	} else if e, ok := err.(net.Error); ok && e.Temporary() { // nolint (we can't really use errors.As() since net.Error is an interface.)
+		return nil
+	}
+
+	return err
+}
+
 // readPump pumps messages from the websocket connection.
 //
 // The application runs readPump in a per-connection goroutine. The application
@@ -112,13 +129,7 @@ func (s *WebsocketServer) readPump() {
 		defer close(s.done)
 	}()
 
-	s.conn.SetPingHandler(func(string) error {
-		if err := s.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-			return err
-		}
-
-		return nil
-	})
+	s.conn.SetPingHandler(s.pingHandler)
 
 	for {
 		_, message, err := s.conn.ReadMessage()
