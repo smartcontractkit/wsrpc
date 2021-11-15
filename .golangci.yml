@@ -1,0 +1,29 @@
+linters:
+  enable:
+    - asciicheck
+    - bidichk
+    - dogsled
+    - errorlint
+    - errname
+    - exhaustive
+    - exportloopref
+    - forcetypeassert
+    - goconst
+    - godot
+    - gofmt
+    - goimports
+    - gosec
+    - misspell
+    - nilnil
+    - nlreturn
+    - revive
+    - thelper
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+linters-settings:
+  goimports:
+    local-prefixes: github.com/smartcontractkit/wsrpc
+  govet:
+    check-shadowing: true

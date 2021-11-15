@@ -66,7 +66,7 @@ func NewExponential(config Config) *Exponential {
 	}
 }
 
-// NextBackOff returns the amount of time to wait before the next retry
+// NextBackOff returns the amount of time to wait before the next retry.
 func (es *Exponential) NextBackOff() time.Duration {
 	es.mu.Lock()
 	defer es.mu.Unlock()
@@ -74,7 +74,7 @@ func (es *Exponential) NextBackOff() time.Duration {
 	return es.BackOff.NextBackOff()
 }
 
-// Reset the interval back to the initial retry interval
+// Reset the interval back to the initial retry interval.
 func (es *Exponential) Reset() {
 	es.mu.Lock()
 	defer es.mu.Unlock()

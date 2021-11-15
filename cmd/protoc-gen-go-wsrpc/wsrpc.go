@@ -28,6 +28,7 @@ func generateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 	g.P("package ", file.GoPackageName)
 	g.P()
 	generateFileContent(gen, file, g)
+
 	return g
 }
 
@@ -40,6 +41,7 @@ func protocVersion(gen *protogen.Plugin) string {
 	if s := v.GetSuffix(); s != "" {
 		suffix = "-" + s
 	}
+
 	return fmt.Sprintf("v%d.%d.%d%s", v.GetMajor(), v.GetMinor(), v.GetPatch(), suffix)
 }
 
@@ -142,12 +144,12 @@ func clientSignature(g *protogen.GeneratedFile, method *protogen.Method) string 
 	s += ") ("
 	s += "*" + g.QualifiedGoIdent(method.Output.GoIdent)
 	s += ", error)"
+
 	return s
 }
 
-func genClientMethod(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, method *protogen.Method, index int) {
+func genClientMethod(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, method *protogen.Method, index int) { //nolint:unparam
 	service := method.Parent
-	// sname := fmt.Sprintf("/%s/%s", service.Desc.FullName(), method.Desc.Name())
 
 	g.P("func (c *", unexport(service.GoName), "Client) ", clientSignature(g, method), "{")
 	g.P("out := new(", method.Output.GoIdent, ")")
@@ -160,14 +162,14 @@ func genClientMethod(gen *protogen.Plugin, file *protogen.File, g *protogen.Gene
 
 func serverSignature(g *protogen.GeneratedFile, method *protogen.Method) string {
 	var reqArgs []string
-	ret := "error"
 	reqArgs = append(reqArgs, g.QualifiedGoIdent(contextPackage.Ident("Context")))
-	ret = "(*" + g.QualifiedGoIdent(method.Output.GoIdent) + ", error)"
+	ret := "(*" + g.QualifiedGoIdent(method.Output.GoIdent) + ", error)"
 	reqArgs = append(reqArgs, "*"+g.QualifiedGoIdent(method.Input.GoIdent))
+
 	return method.GoName + "(" + strings.Join(reqArgs, ", ") + ") " + ret
 }
 
-func genServerMethod(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, method *protogen.Method) string {
+func genServerMethod(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile, method *protogen.Method) string { //nolint:unparam
 	service := method.Parent
 	hname := fmt.Sprintf("_%s_%s_Handler", service.GoName, method.GoName)
 
@@ -177,6 +179,7 @@ func genServerMethod(gen *protogen.Plugin, file *protogen.File, g *protogen.Gene
 	g.P("return srv.(", service.GoName, "Server).", method.GoName, "(ctx, in)")
 	g.P("}")
 	g.P()
+
 	return hname
 }
 

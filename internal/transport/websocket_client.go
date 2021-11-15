@@ -68,12 +68,12 @@ func newWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 	return c, nil
 }
 
-// Read returns a channel which provides the messages as they are read
+// Read returns a channel which provides the messages as they are read.
 func (c *WebsocketClient) Read() <-chan []byte {
 	return c.read
 }
 
-// Write writes a message the websocket connection
+// Write writes a message the websocket connection.
 func (c *WebsocketClient) Write(msg []byte) error {
 	c.write <- msg
 
@@ -110,9 +110,10 @@ func (c *WebsocketClient) readPump() {
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				// log.Printf("[wsrpc] error: %v", err)
-			}
+			// Either remove this or implement better logging.
+			// if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			// log.Printf("[wsrpc] error: %v", err)
+			// }
 			return
 		}
 		c.read <- msg
@@ -165,19 +166,18 @@ func (c *WebsocketClient) writePump() {
 		case <-c.interrupt:
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			//
-			// TODO - This does not currently shutdown cleanly, as the caller does
-			// not wait for this to complete.
 			err := c.conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			)
 			if err != nil {
 				return
 			}
+			c.conn.Close()
 			select {
 			case <-c.done:
 			case <-time.After(time.Second):
 			}
+
 			return
 		}
 	}

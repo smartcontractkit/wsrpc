@@ -53,7 +53,7 @@ func newMutualTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config,
 		// If VerifyPeerCertificate changes to rely on standard x509 certificate
 		// fields (such as, but not limited too CN, expiration date and time)
 		// then it may be necessary to reconsider the use of InsecureSkipVerify.
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, //nolint:gosec
 
 		MaxVersion: tls.VersionTLS13,
 		MinVersion: tls.VersionTLS13,
@@ -122,6 +122,7 @@ func isValidPublicKey(valid []ed25519.PublicKey, pub ed25519.PublicKey) bool {
 			return true
 		}
 	}
+
 	return false
 }
 

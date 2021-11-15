@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
@@ -203,11 +204,7 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 	if md, ok := s.service.methods[methodName]; ok {
 		// Create a decoder function to unmarshal the message
 		dec := func(v interface{}) error {
-			err := UnmarshalProtoMessage(r.GetPayload(), v)
-			if err != nil {
-				return err
-			}
-			return nil
+			return UnmarshalProtoMessage(r.GetPayload(), v)
 		}
 
 		// Inject the peer's public keey into the context so the handler's can use it
@@ -313,13 +310,14 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 		s.mu.Lock()
 		s.removeMethodCall(callID)
 		s.mu.Unlock()
+
 		return errors.New("call timeout")
 	}
 
 	return nil
 }
 
-// UpdatePublicKeys updates the list of allowable public keys in the TLS config
+// UpdatePublicKeys updates the list of allowable public keys in the TLS config.
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 	s.opts.creds.PublicKeys.Replace(pubKeys)
 }
@@ -361,7 +359,7 @@ func (s *Server) Stop() {
 }
 
 // Ensure there is only a single connection per public key by checking the
-// certificate's public key against the list of registered connections
+// certificate's public key against the list of registered connections.
 func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.PublicKeySize]byte, error) {
 	pubKey, err := credentials.PubKeyFromCert(cert)
 	if err != nil {
@@ -393,7 +391,7 @@ func (s *Server) removeMethodCall(id string) {
 	delete(s.methodCalls, id)
 }
 
-// connectionsManager manages the active clients connections
+// connectionsManager manages the active clients connections.
 type connectionsManager struct {
 	mu sync.Mutex
 	// Holds a list of the open connections mapped to a buffered channel of
@@ -445,7 +443,7 @@ func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublic
 	}
 }
 
-// getConnectedPublicKeys gets the public keys of the active connections
+// getConnectedPublicKeys gets the public keys of the active connections.
 func (cm *connectionsManager) getConnectionPublicKeys() []credentials.StaticSizedPublicKey {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -464,6 +462,7 @@ func (cm *connectionsManager) getNotifyChan() <-chan struct{} {
 	if cm.notifyChan == nil {
 		cm.notifyChan = make(chan struct{})
 	}
+
 	return cm.notifyChan
 }
 
