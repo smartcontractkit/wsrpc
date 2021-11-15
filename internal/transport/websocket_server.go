@@ -32,7 +32,7 @@ type WebsocketServer struct {
 	interrupt chan struct{}
 }
 
-// newWebsocketServer server upgrades an HTTP connection to a websocket connection
+// newWebsocketServer server upgrades an HTTP connection to a websocket connection.
 func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) *WebsocketServer {
 	writeTimeout := defaultWriteTimeout
 	if config.WriteTimeout != 0 {
@@ -54,12 +54,12 @@ func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func())
 	return s
 }
 
-// Read returns a channel which provides the messages as they are read
-func (c *WebsocketServer) Read() <-chan []byte {
-	return c.read
+// Read returns a channel which provides the messages as they are read.
+func (s *WebsocketServer) Read() <-chan []byte {
+	return s.read
 }
 
-// Write writes a message the websocket connection
+// Write writes a message the websocket connection.
 func (s *WebsocketServer) Write(msg []byte) error {
 	// Send the message to the channel
 	s.write <- msg
@@ -74,6 +74,7 @@ func (s *WebsocketServer) Close() error {
 	// Make sure we only Close once.
 	if s.state == closing {
 		s.mu.Unlock()
+
 		return nil
 	}
 
@@ -124,9 +125,10 @@ func (s *WebsocketServer) readPump() {
 		// An error is provided when the websocket connection is closed,
 		// allowing us to clean up the goroutine.
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				// log.Printf("[wsrpc] error: %v", err)
-			}
+			// Either remove this or implement better logging.
+			// if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			// log.Printf("[wsrpc] error: %v", err)
+			// }
 			break
 		}
 		s.read <- message
@@ -172,6 +174,7 @@ func (s *WebsocketServer) writePump() {
 			case <-s.done:
 			case <-time.After(time.Second):
 			}
+
 			return
 		}
 	}

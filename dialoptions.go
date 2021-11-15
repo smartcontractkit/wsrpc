@@ -48,6 +48,7 @@ func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicK
 		config, err := credentials.NewClientTLSConfig(privKey, &pubs)
 		if err != nil {
 			log.Println(err)
+
 			return
 		}
 

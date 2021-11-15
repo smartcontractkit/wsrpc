@@ -28,6 +28,7 @@ func (f *strFlags) String() string {
 
 func (f *strFlags) Set(value string) error {
 	*f = append(*f, value)
+
 	return nil
 }
 
@@ -40,6 +41,7 @@ func main() {
 	flag.Parse()
 	if *showVersion {
 		fmt.Printf("protoc-gen-go-grpc %v\n", version)
+
 		return
 	}
 
@@ -56,6 +58,7 @@ func main() {
 			}
 			generateFile(gen, f)
 		}
+
 		return nil
 	})
 }
