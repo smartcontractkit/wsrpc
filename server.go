@@ -98,11 +98,8 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// log.Println("[Server] Establishing Websocket connection")
-
 	pubKey, err := s.ensureSingleClientConnection(r.TLS.PeerCertificates[0])
 	if err != nil {
-		// log.Print("[Server] error: ", err)
 		return
 	}
 
@@ -188,7 +185,7 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 			case *message.Message_Response:
 				s.handleMessageResponse(ex.Response)
 			default:
-				// log.Println("Invalid message type")
+				log.Println("Invalid message type")
 			}
 		case <-done:
 			return

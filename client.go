@@ -197,7 +197,7 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 			case *message.Message_Response:
 				cc.handleMessageResponse(ex.Response)
 			default:
-				// log.Println("Invalid message type")
+				log.Println("Invalid message type")
 			}
 		case <-done:
 			return
@@ -406,7 +406,6 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State) {
 	}
 	ac.state = s
 	ac.stateCh <- s
-	// log.Printf("[AddrConn] Connectivity State: %s", s)
 }
 
 // resetTransport attempts to connect to the server. If the connection fails,
@@ -443,7 +442,7 @@ func (ac *addrConn) resetTransport() {
 
 			// Backoff.
 			timer := time.NewTimer(backoffFor)
-			// log.Printf("[AddrConn] Waiting %s to reconnect", backoffFor)
+
 			select {
 			case <-timer.C:
 				// NOOP - This falls through to continue to retry connecting
