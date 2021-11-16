@@ -80,8 +80,6 @@ func (s *WebsocketServer) Close() error {
 		return nil
 	}
 
-	// log.Println("[wsrpc] closing transport")
-
 	s.state = closing
 
 	// Close the write channel to stop the go routine
@@ -136,10 +134,6 @@ func (s *WebsocketServer) readPump() {
 		// An error is provided when the websocket connection is closed,
 		// allowing us to clean up the goroutine.
 		if err != nil {
-			// Either remove this or implement better logging.
-			// if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-			// log.Printf("[wsrpc] error: %v", err)
-			// }
 			break
 		}
 		s.read <- message
@@ -170,14 +164,10 @@ func (s *WebsocketServer) writePump() {
 		case <-s.interrupt:
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			//
-			// TODO - This does not currently shutdown cleanly, as the caller does
-			// not wait for this to complete.
 			err := s.conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 			)
 			if err != nil {
-				// log.Println("[wsrpc] error:", err)
 				return
 			}
 			s.conn.Close()

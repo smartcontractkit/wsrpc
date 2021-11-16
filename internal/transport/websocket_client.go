@@ -110,10 +110,6 @@ func (c *WebsocketClient) readPump() {
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
-			// Either remove this or implement better logging.
-			// if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-			// log.Printf("[wsrpc] error: %v", err)
-			// }
 			return
 		}
 		c.read <- msg
@@ -151,7 +147,6 @@ func (c *WebsocketClient) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
-				// log.Printf("[wsrpc] error: %v", err)
 				return
 			}
 		case <-ticker.C:
@@ -160,7 +155,6 @@ func (c *WebsocketClient) writePump() {
 			//nolint:errcheck
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				// log.Printf("[wsrpc] error: %v", err)
 				return
 			}
 		case <-c.interrupt:
