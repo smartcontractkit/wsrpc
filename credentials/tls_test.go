@@ -2,7 +2,6 @@ package credentials
 
 import (
 	"crypto/ed25519"
-	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -82,11 +81,13 @@ func Test_NewServerTLSConfig(t *testing.T) {
 }
 
 func Test_PubKeyFromCert(t *testing.T) {
-	pub, priv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42))) //nolint:gosec
+	randReader := rand.New(rand.NewSource(42)) //nolint:gosec
+
+	pub, priv, err := ed25519.GenerateKey(randReader)
 	require.NoError(t, err)
 
 	template := x509.Certificate{SerialNumber: big.NewInt(0)}
-	encodedCert, err := x509.CreateCertificate(cryptorand.Reader, &template, &template, priv.Public(), priv)
+	encodedCert, err := x509.CreateCertificate(randReader, &template, &template, priv.Public(), priv)
 	require.NoError(t, err)
 
 	cert, err := x509.ParseCertificate(encodedCert)
@@ -99,11 +100,13 @@ func Test_PubKeyFromCert(t *testing.T) {
 }
 
 func Test_PubKeyFromCert_MustBeEd25519KeyError(t *testing.T) {
-	priv, err := rsa.GenerateKey(cryptorand.Reader, 2048)
+	randReader := rand.New(rand.NewSource(42)) //nolint:gosec
+
+	priv, err := rsa.GenerateKey(randReader, 2048)
 	require.NoError(t, err)
 
 	template := x509.Certificate{SerialNumber: big.NewInt(0)}
-	encodedCert, err := x509.CreateCertificate(cryptorand.Reader, &template, &template, priv.Public(), priv)
+	encodedCert, err := x509.CreateCertificate(randReader, &template, &template, priv.Public(), priv)
 	require.NoError(t, err)
 
 	cert, err := x509.ParseCertificate(encodedCert)
