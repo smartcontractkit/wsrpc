@@ -317,6 +317,7 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 // UpdatePublicKeys updates the list of allowable public keys in the TLS config.
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 	s.opts.creds.PublicKeys.Replace(pubKeys)
+	s.removeConnectionsToDeletedKeys(pubKeys)
 }
 
 // GetConnectionNotifyChan gets the connection notification channel.
@@ -353,6 +354,35 @@ func (s *Server) Stop() {
 
 	// Wait for all the connections to close
 	s.serveWG.Wait()
+}
+
+// When the list of allowable certs are updated, we need to refresh the existing
+// connections as well and shutdown any client connections no longer allowed.
+func (s *Server) removeConnectionsToDeletedKeys(pubKeys []ed25519.PublicKey) {
+	for k, conn := range s.connMgr.conns {
+		found := false
+
+		for _, pk := range pubKeys {
+			pubKey, err := credentials.ToStaticallySizedPublicKey(pk)
+
+			if err != nil {
+				log.Print("[Server] error removing connections: ", err)
+
+				continue
+			}
+
+			if k == pubKey {
+				found = true
+
+				break
+			}
+		}
+
+		if !found {
+			conn.Close()
+			s.connMgr.removeConnection(k)
+		}
+	}
 }
 
 // Ensure there is only a single connection per public key by checking the

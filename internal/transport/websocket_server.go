@@ -18,7 +18,7 @@ type WebsocketServer struct {
 	// Underlying communication channel
 	conn *websocket.Conn
 
-	// The current start of the server transport
+	// The current state of the server transport
 	state transportState
 
 	// Callback function called when the transport is closed
