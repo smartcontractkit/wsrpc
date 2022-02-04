@@ -118,7 +118,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		// There is only no connection maanger when we are shutting down, so
 		// we can ignore removing the connection.
 		if s.connMgr != nil {
+			s.connMgr.mu.Lock()
 			s.connMgr.removeConnection(pubKey)
+			s.connMgr.mu.Unlock()
 		}
 		s.serveWG.Done()
 		close(done)
@@ -316,6 +318,9 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 
 // UpdatePublicKeys updates the list of allowable public keys in the TLS config.
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.opts.creds.PublicKeys.Replace(pubKeys)
 	s.removeConnectionsToDeletedKeys(pubKeys)
 }
@@ -359,26 +364,19 @@ func (s *Server) Stop() {
 // When the list of allowable certs are updated, we need to refresh the existing
 // connections as well and shutdown any client connections no longer allowed.
 func (s *Server) removeConnectionsToDeletedKeys(pubKeys []ed25519.PublicKey) {
-	for k, conn := range s.connMgr.conns {
-		found := false
+	pubKeysMap := make(map[credentials.StaticSizedPublicKey]bool)
 
-		for _, pk := range pubKeys {
-			pubKey, err := credentials.ToStaticallySizedPublicKey(pk)
-
-			if err != nil {
-				log.Print("[Server] error removing connections: ", err)
-
-				continue
-			}
-
-			if k == pubKey {
-				found = true
-
-				break
-			}
+	for _, pk := range pubKeys {
+		pubKey, err := credentials.ToStaticallySizedPublicKey(pk)
+		if err != nil {
+			log.Print("[Server] error reading keys while removing connections: ", err)
+		} else {
+			pubKeysMap[pubKey] = true
 		}
+	}
 
-		if !found {
+	for k, conn := range s.connMgr.conns {
+		if _, ok := pubKeysMap[k]; !ok {
 			conn.Close()
 			s.connMgr.removeConnection(k)
 		}
@@ -458,9 +456,8 @@ func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPubl
 	}
 }
 
+// This requires a lock on cm.mu.
 func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublicKey) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
 	delete(cm.conns, key)
 
 	if cm.notifyChan != nil {
