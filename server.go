@@ -118,7 +118,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		// There is only no connection maanger when we are shutting down, so
 		// we can ignore removing the connection.
 		if s.connMgr != nil {
+			s.connMgr.mu.Lock()
 			s.connMgr.removeConnection(pubKey)
+			s.connMgr.mu.Unlock()
 		}
 		s.serveWG.Done()
 		close(done)
@@ -316,7 +318,11 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 
 // UpdatePublicKeys updates the list of allowable public keys in the TLS config.
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	s.opts.creds.PublicKeys.Replace(pubKeys)
+	s.removeConnectionsToDeletedKeys(pubKeys)
 }
 
 // GetConnectionNotifyChan gets the connection notification channel.
@@ -353,6 +359,28 @@ func (s *Server) Stop() {
 
 	// Wait for all the connections to close
 	s.serveWG.Wait()
+}
+
+// When the list of allowable certs are updated, we need to refresh the existing
+// connections as well and shutdown any client connections no longer allowed.
+func (s *Server) removeConnectionsToDeletedKeys(pubKeys []ed25519.PublicKey) {
+	pubKeysMap := make(map[credentials.StaticSizedPublicKey]bool)
+
+	for _, pk := range pubKeys {
+		pubKey, err := credentials.ToStaticallySizedPublicKey(pk)
+		if err != nil {
+			log.Print("[Server] error reading keys while removing connections: ", err)
+		} else {
+			pubKeysMap[pubKey] = true
+		}
+	}
+
+	for k, conn := range s.connMgr.conns {
+		if _, ok := pubKeysMap[k]; !ok {
+			conn.Close()
+			s.connMgr.removeConnection(k)
+		}
+	}
 }
 
 // Ensure there is only a single connection per public key by checking the
@@ -428,9 +456,8 @@ func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPubl
 	}
 }
 
+// This requires a lock on cm.mu.
 func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublicKey) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
 	delete(cm.conns, key)
 
 	if cm.notifyChan != nil {
