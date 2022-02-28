@@ -163,7 +163,7 @@ func (cc *ClientConn) listenForRead() {
 		notifyChan := cc.csMgr.getNotifyChan()
 		<-notifyChan
 
-		s := cc.csMgr.state
+		s := cc.csMgr.getState()
 
 		if s == connectivity.Ready {
 			if done == nil {
