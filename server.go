@@ -5,11 +5,11 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -304,13 +304,13 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 		if err != nil {
 			return err
 		}
-	case <-time.After(2 * time.Second): // TODO - Make this configurable
+	case <-ctx.Done():
 		// Remove the call since we have timeout
 		s.mu.Lock()
 		s.removeMethodCall(callID)
 		s.mu.Unlock()
 
-		return errors.New("call timeout")
+		return fmt.Errorf("call timeout: %w", ctx.Err())
 	}
 
 	return nil

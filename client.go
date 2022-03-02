@@ -320,13 +320,13 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 		if err != nil {
 			return err
 		}
-	case <-time.After(2 * time.Second): // TODO - Make this configurable
+	case <-ctx.Done():
 		// Remove the call since we have timeout
 		cc.mu.Lock()
 		cc.removeMethodCall(callID)
 		cc.mu.Unlock()
 
-		return errors.New("call timeout")
+		return fmt.Errorf("call timeout: %w", ctx.Err())
 	}
 
 	return nil

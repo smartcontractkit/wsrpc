@@ -66,12 +66,19 @@ func main() {
 // pingContinuously sends a Ping RPC call to the server every 5 seconds
 func pingContinuously(client pb.PingClient) {
 	for {
-		res, err := client.Ping(context.Background(), &pb.PingRequest{Body: "ping"})
-		if err != nil {
-			log.Printf("[RPC CALL] Some error ocurred pinging: %v", err)
-		} else {
-			log.Printf("[RPC CALL] CALL: Ping -> %s", res.GetBody())
-		}
+		func() {
+			// Set a deadline
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			// Call the server
+			res, err := client.Ping(ctx, &pb.PingRequest{Body: "ping"})
+			if err != nil {
+				log.Printf("[CALL] Some error ocurred pinging: %v", err)
+			} else {
+				log.Printf("[CALL] Ping -> %s", res.GetBody())
+			}
+		}()
 
 		time.Sleep(5 * time.Second)
 	}
@@ -85,7 +92,7 @@ type gnipClient struct{}
 func (c *gnipClient) Gnip(ctx context.Context, req *pb.GnipRequest) (*pb.GnipResponse, error) {
 	resBody := "gnop"
 
-	log.Printf("[RPC SERVICE HANDLER] %s -> %s", req.Body, resBody)
+	log.Printf("[HANDLER] %s -> %s", req.Body, resBody)
 
 	return &pb.GnipResponse{
 		Body: resBody,
