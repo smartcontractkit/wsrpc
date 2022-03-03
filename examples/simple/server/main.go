@@ -87,19 +87,24 @@ func main() {
 func pingClientsContinuously(c pb.GnipClient, clientIdentities map[credentials.StaticSizedPublicKey]string) {
 	for {
 		for pubKey, name := range clientIdentities {
-			ctx := peer.NewCallContext(context.Background(), pubKey)
-			res, err := c.Gnip(ctx, &pb.GnipRequest{Body: "Gnip"})
-			if err != nil {
-				if errors.Is(err, wsrpc.ErrNotConnected) {
-					log.Printf("[RPC CALL] %s: %v", name, err)
-				} else {
-					log.Printf("[RPC CALL] Some error ocurred: %v", err)
+			func() {
+				ctx := peer.NewCallContext(context.Background(), pubKey)
+				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+
+				res, err := c.Gnip(ctx, &pb.GnipRequest{Body: "Gnip"})
+				if err != nil {
+					if errors.Is(err, wsrpc.ErrNotConnected) {
+						log.Printf("[RPC CALL] %s: %v", name, err)
+					} else {
+						log.Printf("[RPC CALL] Some error ocurred: %v", err)
+					}
+
+					return
 				}
 
-				continue
-			}
-
-			log.Printf("[RPC CALL] Gnip (%s) -> %s", name, res.GetBody())
+				log.Printf("[RPC CALL] Gnip (%s) -> %s", name, res.GetBody())
+			}()
 		}
 
 		time.Sleep(5 * time.Second)
