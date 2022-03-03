@@ -473,6 +473,8 @@ func (ac *addrConn) resetTransport() {
 		// Block until the created transport is down. When this happens, we
 		// attempt to reconnect by starting again from the top
 		<-reconnect.Done()
+
+		log.Println("[wsrpc] Reconnecting to server...")
 	}
 }
 

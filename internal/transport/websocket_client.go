@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -98,8 +99,8 @@ func (c WebsocketClient) start() {
 }
 
 // readPump pumps messages from the websocket connection. When a websocket
-// connection closure is detected, it closes the done channel to shutdown
-// writePump.
+// connection closure is detected through a read error, it closes the done
+// channel to shutdown writePump.
 //
 // The application runs readPump in a per-connection goroutine. This ensures
 // that there is at most one reader on a connection by executing all reads from
@@ -147,6 +148,10 @@ func (c *WebsocketClient) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
+				log.Printf("[wsrpc] write error: %v\n", err)
+
+				c.conn.Close()
+
 				return
 			}
 		case <-ticker.C:
@@ -155,6 +160,8 @@ func (c *WebsocketClient) writePump() {
 			//nolint:errcheck
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				c.conn.Close()
+
 				return
 			}
 		case <-c.interrupt:

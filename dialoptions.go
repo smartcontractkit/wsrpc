@@ -3,6 +3,7 @@ package wsrpc
 import (
 	"crypto/ed25519"
 	"log"
+	"time"
 
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
@@ -62,6 +63,14 @@ func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicK
 func WithBlock() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.block = true
+	})
+}
+
+// WithWriteTimeout returns a DialOption which sets the write timeout for a
+// message to be sent on the wire.
+func WithWriteTimeout(d time.Duration) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.copts.WriteTimeout = d
 	})
 }
 
