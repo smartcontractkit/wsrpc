@@ -237,14 +237,18 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 // handleMessageResponse finds the call which matches the method call id of the
 // response and sends the payload to the call channel.
 func (cc *ClientConn) handleMessageResponse(r *message.Response) {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-
 	callID := r.GetCallId()
-	if call, ok := cc.methodCalls[callID]; ok {
+
+	cc.mu.Lock()
+	call, ok := cc.methodCalls[callID]
+	cc.mu.Unlock()
+
+	if ok {
 		call <- r
 
+		cc.mu.Lock()
 		cc.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
+		cc.mu.Unlock()
 	}
 }
 
@@ -308,28 +312,33 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	}
 
 	// Wait for the response
-	select {
-	case resp := <-wait:
-		// Handle error
-		if resp.Error != "" {
-			return errors.New(resp.Error)
-		}
+	for {
+		select {
+		case resp := <-wait:
+			// Handle error
+			if resp.Error != "" {
+				return errors.New(resp.Error)
+			}
 
-		// Unmarshal the payload into the reply
-		err := UnmarshalProtoMessage(resp.GetPayload(), reply)
-		if err != nil {
-			return err
-		}
-	case <-ctx.Done():
-		// Remove the call since we have timeout
-		cc.mu.Lock()
-		cc.removeMethodCall(callID)
-		cc.mu.Unlock()
+			// Unmarshal the payload into the reply
+			err := UnmarshalProtoMessage(resp.GetPayload(), reply)
+			if err != nil {
+				return err
+			}
 
-		return fmt.Errorf("call timeout: %w", ctx.Err())
+			return nil
+		case <-ctx.Done():
+			if len(wait) > 0 {
+				continue
+			}
+			// Remove the call since we have timeout
+			cc.mu.Lock()
+			cc.removeMethodCall(callID)
+			cc.mu.Unlock()
+
+			return fmt.Errorf("call timeout: %w", ctx.Err())
+		}
 	}
-
-	return nil
 }
 
 // registerMethodCall registers a method call to the method call map.
