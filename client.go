@@ -23,6 +23,10 @@ var (
 	errConnClosing = errors.New("grpc: the connection is closing")
 )
 
+// MethodCallHandler defines a handler which is called when the websocket
+// message contains a response to an RPC call.
+type MethodCallHandler func(*message.Response)
+
 // ClientInterface defines the functions clients need to perform an RPC.
 // It is implemented by *ClientConn and *Server.
 type ClientInterface interface {
@@ -45,9 +49,9 @@ type ClientConn struct {
 	dopts dialOptions
 	conn  *addrConn
 
-	// Contains all pending method call ids and the channel to respond to when
-	// a result is received
-	methodCalls map[string]chan<- *message.Response
+	// Contains all pending method call ids and a handler to call when a
+	// response is received
+	methodCalls map[string]MethodCallHandler
 
 	// The RPC service definition
 	service *serviceInfo
@@ -67,7 +71,7 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 		target:      target,
 		csMgr:       &connectivityStateManager{},
 		dopts:       defaultDialOptions(),
-		methodCalls: map[string]chan<- *message.Response{},
+		methodCalls: map[string]MethodCallHandler{},
 	}
 
 	for _, opt := range opts {
@@ -237,14 +241,14 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 // handleMessageResponse finds the call which matches the method call id of the
 // response and sends the payload to the call channel.
 func (cc *ClientConn) handleMessageResponse(r *message.Response) {
-	cc.mu.Lock()
-	defer cc.mu.Unlock()
-
 	callID := r.GetCallId()
-	if call, ok := cc.methodCalls[callID]; ok {
-		call <- r
 
-		cc.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
+	cc.mu.Lock()
+	handlerFunc, ok := cc.methodCalls[callID]
+	cc.mu.Unlock()
+
+	if ok {
+		handlerFunc(r)
 	}
 }
 
@@ -299,9 +303,17 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 		return err
 	}
 
+	// Register a method call for the callID.
 	cc.mu.Lock()
-	wait := cc.registerMethodCall(callID)
+	wait := cc.registerMethodCall(ctx, callID)
 	cc.mu.Unlock()
+
+	// Remove the method call once invoke has been completed.
+	defer func() {
+		cc.mu.Lock()
+		cc.removeMethodCall(callID)
+		cc.mu.Unlock()
+	}()
 
 	if err := cc.conn.transport.Write(reqB); err != nil {
 		return err
@@ -321,23 +333,24 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 			return err
 		}
 	case <-ctx.Done():
-		// Remove the call since we have timeout
-		cc.mu.Lock()
-		cc.removeMethodCall(callID)
-		cc.mu.Unlock()
-
 		return fmt.Errorf("call timeout: %w", ctx.Err())
 	}
 
 	return nil
 }
 
-// registerMethodCall registers a method call to the method call map.
+// registerMethodCall registers a method call handler func.
 //
 // This requires a lock on cc.mu.
-func (cc *ClientConn) registerMethodCall(id string) <-chan *message.Response {
+func (cc *ClientConn) registerMethodCall(ctx context.Context, id string) <-chan *message.Response {
 	wait := make(chan *message.Response)
-	cc.methodCalls[id] = wait
+
+	cc.methodCalls[id] = func(r *message.Response) {
+		select {
+		case <-ctx.Done():
+		case wait <- r:
+		}
+	}
 
 	return wait
 }
