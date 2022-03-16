@@ -156,11 +156,7 @@ func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 		return err
 	}
 
-	if err := tr.Write(msg); err != nil {
-		return err
-	}
-
-	return nil
+	return tr.Write(msg)
 }
 
 // handleRead listens to the transport read channel and passes the message to the
