@@ -134,7 +134,7 @@ func (uc *UniClientConn) Invoke(ctx context.Context, method string, args interfa
 			}
 			uc.lggr.Warnf("received error %v writing message, reconnecting", err)
 			freshConn, err := retryConnectWithBackoff(ctx, uc.lggr, func(ctx2 context.Context) (Conn, error) {
-				return connect(ctx2, uc.target, uc.tlsConfig)
+				return uc.connector(ctx2, uc.target, uc.tlsConfig)
 			})
 			if err != nil {
 				return err
@@ -153,7 +153,7 @@ func (uc *UniClientConn) Invoke(ctx context.Context, method string, args interfa
 			}
 			uc.lggr.Warnf("received error %v reading message, reconnecting", err)
 			freshConn, err := retryConnectWithBackoff(ctx, uc.lggr, func(ctx2 context.Context) (Conn, error) {
-				return connect(ctx2, uc.target, uc.tlsConfig)
+				return uc.connector(ctx2, uc.target, uc.tlsConfig)
 			})
 			if err != nil {
 				return err
