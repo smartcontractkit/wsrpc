@@ -46,14 +46,16 @@ type UniClientConn struct {
 	lggr      Logger
 }
 
-// DialUniWithContext will error if context expires for first connection.
+// DialUniWithContext will blocks until connection is established or context expires.
 func DialUniWithContext(ctx context.Context, lggr Logger, target string, privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) (*UniClientConn, error) {
 	pubs := credentials.PublicKeys{serverPubKey}
 	tlsConfig, err := credentials.NewClientTLSConfig(privKey, &pubs)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := connect(ctx, target, tlsConfig)
+	conn, err := retryConnectWithBackoff(ctx, lggr, func(ctx2 context.Context) (Conn, error) {
+		return connect(ctx2, target, tlsConfig)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -82,27 +84,24 @@ func max(d1 time.Duration, d2 time.Duration) time.Duration {
 
 // reconnect will retry forever to connect unless cancelled
 // assumes caller holds conn lock.
-func (uc *UniClientConn) reconnect(ctx context.Context) error {
+func retryConnectWithBackoff(ctx context.Context, lggr Logger, connect func(ctx2 context.Context) (Conn, error)) (Conn, error) {
 	reconnectWait := time.Second
 	for {
-		uc.lggr.Warnf("reconnecting to %v", uc.target)
-		freshConn, err := uc.connector(ctx, uc.target, uc.tlsConfig)
+		freshConn, err := connect(ctx)
 		if err != nil {
-			uc.lggr.Warnf("error reconnecting %v, waiting then retrying", err)
+			lggr.Warnf("error connecting %v, waiting then retrying", err)
 			// If ctx is cancelled, return.
 			// Otherwise, wait to reconnect and try again.
 			select {
 			case <-ctx.Done():
-				uc.lggr.Warnf("ctx error %v reconnecting ", ctx.Err())
-				return ctx.Err()
+				lggr.Warnf("ctx error %v reconnecting", ctx.Err())
+				return nil, ctx.Err()
 			case <-time.After(reconnectWait):
 			}
 			reconnectWait = max(reconnectWait*2, 1*time.Minute)
 			continue
 		}
-		// Populate fresh conn
-		uc.conn = freshConn
-		return nil
+		return freshConn, nil
 	}
 }
 
@@ -134,9 +133,13 @@ func (uc *UniClientConn) Invoke(ctx context.Context, method string, args interfa
 				return ctx.Err()
 			}
 			uc.lggr.Warnf("received error %v writing message, reconnecting", err)
-			if err = uc.reconnect(ctx); err != nil {
-				return err
+			freshConn, err2 := retryConnectWithBackoff(ctx, uc.lggr, func(ctx2 context.Context) (Conn, error) {
+				return uc.connector(ctx2, uc.target, uc.tlsConfig)
+			})
+			if err2 != nil {
+				return err2
 			}
+			uc.conn = freshConn
 			continue
 		}
 		if isDeadline {
@@ -149,9 +152,13 @@ func (uc *UniClientConn) Invoke(ctx context.Context, method string, args interfa
 				return ctx.Err()
 			}
 			uc.lggr.Warnf("received error %v reading message, reconnecting", err)
-			if err := uc.reconnect(ctx); err != nil {
-				return err
+			freshConn, err2 := retryConnectWithBackoff(ctx, uc.lggr, func(ctx2 context.Context) (Conn, error) {
+				return uc.connector(ctx2, uc.target, uc.tlsConfig)
+			})
+			if err2 != nil {
+				return err2
 			}
+			uc.conn = freshConn
 			continue
 		}
 		break
