@@ -18,6 +18,9 @@ type serverOptions struct {
 
 	// Transport Credentials
 	creds credentials.TransportCredentials
+
+	// The address that the healthcheck will run on
+	healthcheckAddr string
 }
 
 // funcServerOption wraps a function that modifies serverOptions into an
@@ -69,4 +72,12 @@ func ReadBufferSize(s int) ServerOption {
 var defaultServerOptions = serverOptions{
 	writeBufferSize: 4096,
 	readBufferSize:  4096,
+}
+
+// WithHealthcheck specifies whether to run a healthcheck endpoint. If a url
+// is not provided, a healthcheck endpoint is not started.
+func WithHealthcheck(addr string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.healthcheckAddr = addr
+	})
 }

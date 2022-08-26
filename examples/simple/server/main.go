@@ -43,7 +43,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("[MAIN] failed to listen: %v", err)
 	}
-	s := wsrpc.NewServer(wsrpc.Creds(privKey, pubKeys))
+	s := wsrpc.NewServer(
+		wsrpc.Creds(privKey, pubKeys),
+		wsrpc.WithHealthcheck("127.0.0.1:1337"),
+	)
 
 	// Register the ping server implementation with the wsrpc server
 	pb.RegisterPingServer(s, &pingServer{
