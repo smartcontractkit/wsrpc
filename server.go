@@ -27,7 +27,7 @@ var ErrNotConnected = errors.New("client not connected")
 type Server struct {
 	mu sync.RWMutex
 
-	httpsrv *http.Server
+	wssrv *http.Server
 
 	opts serverOptions
 
@@ -76,16 +76,39 @@ func NewServer(opt ...ServerOption) *Server {
 // Serve accepts incoming connections on the listener lis, creating a new
 // ServerTransport and service goroutine for each.
 func (s *Server) Serve(lis net.Listener) {
-	httpsrv := &http.Server{
-		TLSConfig: s.opts.creds.Config,
+	// Serve Healthcheck over HTTP
+	if s.opts.healthcheckAddr != "" {
+		hclis, err := net.Listen("tcp", s.opts.healthcheckAddr)
+		if err != nil {
+			panic(err)
+		}
+		hchandler := http.NewServeMux()
+		hchandler.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		hcsrv := &http.Server{
+			Handler: hchandler,
+		}
+
+		//nolint:errcheck
+		go hcsrv.Serve(hclis)
+		defer hcsrv.Close()
 	}
-	http.HandleFunc("/", s.wshandler)
+
+	// Serve websockets over HTTPS
+	wshandler := http.NewServeMux()
+	wshandler.HandleFunc("/", s.wshandler)
+	wssrv := &http.Server{
+		TLSConfig: s.opts.creds.Config,
+		Handler:   wshandler,
+	}
 
 	//nolint:errcheck
-	go httpsrv.ServeTLS(lis, "", "")
-	defer httpsrv.Close()
+	go wssrv.ServeTLS(lis, "", "")
+	defer wssrv.Close()
 
-	s.httpsrv = httpsrv
+	s.wssrv = wssrv
 
 	<-s.done.Done()
 }
