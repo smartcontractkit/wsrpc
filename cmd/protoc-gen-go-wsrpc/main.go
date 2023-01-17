@@ -1,15 +1,18 @@
 // protoc-gen-go-wsrpc is a plugin for the Google protocol buffer compiler to
 // generate Go code. Install it by building this program and making it
 // accessible within your PATH with the name:
+//
 //	protoc-gen-go-wsrpc
 //
-// The 'go-grpc' suffix becomes part of the argument for the protocol compiler,
+// The 'go-wsrpc' suffix becomes part of the argument for the protocol compiler,
 // such that it can be invoked as:
-//	protoc --go-grpc_out=. path/to/file.proto
+//
+//	protoc --go-wsrpc_out=. path/to/file.proto
 //
 // This generates Go service definitions for the protocol buffer defined by
 // file.proto.  With that input, the output will be written to:
-//	path/to/file_grpc.pb.go
+//
+//	path/to/file_wsrpc.pb.go
 package main
 
 import (
@@ -40,7 +43,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("protoc-gen-go-grpc %v\n", version)
+		fmt.Printf("protoc-gen-go-wsrpc %v\n", version)
 
 		return
 	}
