@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+option go_package = "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs";
+
+package rpcs;
+
+service ClientToServer {
+    rpc Echo(EchoRequest) returns (EchoResponse);
+}
+
+message EchoRequest {
+    string body = 1;
+}
+
+message EchoResponse {
+    string body = 1;
+}
