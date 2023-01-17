@@ -13,7 +13,7 @@ const (
 	wsrpcPackage   = protogen.GoImportPath("github.com/smartcontractkit/wsrpc")
 )
 
-// generateFile generates a _wsrpc.pb.go file containing gRPC service definitions.
+// generateFile generates a _wsrpc.pb.go file containing wsRPC service definitions.
 func generateFile(gen *protogen.Plugin, file *protogen.File) *protogen.GeneratedFile {
 	if len(file.Services) == 0 {
 		return nil

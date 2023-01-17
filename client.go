@@ -20,7 +20,7 @@ import (
 
 var (
 	// errConnClosing indicates that the connection is closing.
-	errConnClosing = errors.New("grpc: the connection is closing")
+	errConnClosing = errors.New("wsrpc: the connection is closing")
 )
 
 // MethodCallHandler defines a handler which is called when the websocket

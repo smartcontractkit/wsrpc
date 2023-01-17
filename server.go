@@ -361,7 +361,7 @@ func (s *Server) GetConnectedPeerPublicKeys() []credentials.StaticSizedPublicKey
 	return s.connMgr.getConnectionPublicKeys()
 }
 
-// Stop stops the gRPC server. It immediately closes all open
+// Stop stops the wsRPC server. It immediately closes all open
 // connections and listeners.
 func (s *Server) Stop() {
 	s.quit.Fire()
