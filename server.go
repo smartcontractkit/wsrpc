@@ -51,6 +51,7 @@ type Server struct {
 	serveWG sync.WaitGroup
 }
 
+// NewServer initializes a new wsrpc server.
 func NewServer(opt ...ServerOption) *Server {
 	opts := defaultServerOptions
 	for _, o := range opt {
@@ -138,7 +139,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 
 	config := &transport.ServerConfig{}
 	onClose := func() {
-		// There is only no connection maanger when we are shutting down, so
+		// There is no connection manager when we are shutting down, so
 		// we can ignore removing the connection.
 		if s.connMgr != nil {
 			s.connMgr.mu.Lock()
@@ -171,7 +172,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Send writes the message to the connection which matches the public key.
+// sendMsg writes the message to the connection which matches the public key.
 func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 	// Find the transport matching the public key
 	tr, err := s.connMgr.getTransport(pub)
@@ -202,9 +203,9 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 			// Handle the message request or response
 			switch ex := msg.Exchange.(type) {
 			case *message.Message_Request:
-				s.handleMessageRequest(pubKey, ex.Request)
+				go s.handleMessageRequest(pubKey, ex.Request)
 			case *message.Message_Response:
-				s.handleMessageResponse(ex.Response)
+				go s.handleMessageResponse(ex.Response)
 			default:
 				log.Println("Invalid message type")
 			}
@@ -215,7 +216,7 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 }
 
 // handleMessageRequest looks up the method matching the method name and calls
-// the handler. The connection client's public is injected into the context,
+// the handler. The connection client's public key is injected into the context,
 // so the handler is able to identify the caller.
 func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r *message.Request) {
 	methodName := r.GetMethod()
@@ -225,7 +226,7 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 			return UnmarshalProtoMessage(r.GetPayload(), v)
 		}
 
-		// Inject the peer's public keey into the context so the handler's can use it
+		// Inject the peer's public key into the context so the handler can use it
 		ctx := peer.NewContext(context.Background(), &peer.Peer{PublicKey: pubKey})
 		v, herr := md.Handler(s.service.serviceImpl, ctx, dec)
 
@@ -280,7 +281,7 @@ func (s *Server) register(sd *ServiceDesc, ss interface{}) {
 	s.service = info
 }
 
-// Invoke sends the RPC request on the connection which connected with the
+// Invoke sends the RPC request on the connection which is connected with the
 // public key and returns after response is received.
 func (s *Server) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	callID := uuid.NewString()
@@ -305,8 +306,7 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 	}
 	pubKey := p.PublicKey
 
-	err = s.sendMsg(pubKey, req)
-	if err != nil {
+	if err = s.sendMsg(pubKey, req); err != nil {
 		return err
 	}
 
@@ -319,8 +319,7 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 		}
 
 		// Unmarshal the payload into the reply
-		err := UnmarshalProtoMessage(msg.GetPayload(), reply)
-		if err != nil {
+		if err := UnmarshalProtoMessage(msg.GetPayload(), reply); err != nil {
 			return err
 		}
 	case <-ctx.Done():
@@ -335,7 +334,8 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 	return nil
 }
 
-// UpdatePublicKeys updates the list of allowable public keys in the TLS config.
+// UpdatePublicKeys updates the list of allowable public keys in the TLS config
+// and drops the connections which match the deleted keys.
 func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -394,6 +394,10 @@ func (s *Server) removeConnectionsToDeletedKeys(pubKeys []ed25519.PublicKey) {
 		}
 	}
 
+	// Removing connections requires a lock on the connections manager.
+	s.connMgr.mu.Lock()
+	defer s.connMgr.mu.Unlock()
+
 	for k, conn := range s.connMgr.conns {
 		if _, ok := pubKeysMap[k]; !ok {
 			conn.Close()
@@ -451,6 +455,7 @@ func newConnectionsManager() *connectionsManager {
 	}
 }
 
+// getTransport fetches the transport which matches the public key.
 func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey) (transport.ServerTransport, error) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -463,6 +468,7 @@ func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey)
 	return tr, nil
 }
 
+// registerConnection registers a new transport mapped to a public key.
 func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPublicKey, value transport.ServerTransport) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -475,6 +481,8 @@ func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPubl
 	}
 }
 
+// removeConnection removes a transport from the registered list.
+//
 // This requires a lock on cm.mu.
 func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublicKey) {
 	delete(cm.conns, key)
@@ -486,7 +494,7 @@ func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublic
 	}
 }
 
-// getConnectedPublicKeys gets the public keys of the active connections.
+// getConnectionPublicKeys gets the public keys of the active connections.
 func (cm *connectionsManager) getConnectionPublicKeys() []credentials.StaticSizedPublicKey {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -499,6 +507,8 @@ func (cm *connectionsManager) getConnectionPublicKeys() []credentials.StaticSize
 	return keys
 }
 
+// getNotifyChan returns a channel used to notify the watcher when the list
+// of connections changes.
 func (cm *connectionsManager) getNotifyChan() <-chan struct{} {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -509,6 +519,7 @@ func (cm *connectionsManager) getNotifyChan() <-chan struct{} {
 	return cm.notifyChan
 }
 
+// close closes all registered connections.
 func (cm *connectionsManager) close() {
 	for _, conn := range cm.conns {
 		conn.Close()
