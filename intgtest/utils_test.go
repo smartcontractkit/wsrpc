@@ -20,6 +20,10 @@ type clientToServerServer struct{}
 
 // Echo echoes the request back to the client
 func (s *clientToServerServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
+	if req.DelayMs > 0 {
+		time.Sleep(time.Duration(req.DelayMs) * time.Millisecond)
+	}
+
 	return &pb.EchoResponse{
 		Body: req.Body,
 	}, nil
