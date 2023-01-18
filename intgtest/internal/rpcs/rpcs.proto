@@ -4,7 +4,7 @@ option go_package = "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs";
 
 package rpcs;
 
-service ClientToServer {
+service Echo {
     rpc Echo(EchoRequest) returns (EchoResponse);
 }
 

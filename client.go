@@ -197,9 +197,9 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 
 			switch ex := msg.Exchange.(type) {
 			case *message.Message_Request:
-				cc.handleMessageRequest(ex.Request)
+				go cc.handleMessageRequest(ex.Request)
 			case *message.Message_Response:
-				cc.handleMessageResponse(ex.Response)
+				go cc.handleMessageResponse(ex.Response)
 			default:
 				log.Println("Invalid message type")
 			}
