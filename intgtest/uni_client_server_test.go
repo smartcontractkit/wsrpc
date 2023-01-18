@@ -3,6 +3,7 @@ package intgtest
 import (
 	"context"
 	"crypto/ed25519"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,9 +41,7 @@ func Test_SimpleCall(t *testing.T) {
 	c := pb.NewClientToServerClient(conn)
 
 	// Wait for the connection to be established
-	assert.Eventually(t, func() bool {
-		return conn.GetState() == connectivity.Ready
-	}, 5*time.Second, 200*time.Millisecond)
+	waitForReadyConnection(t, conn)
 
 	resp, err := c.Echo(context.Background(), &pb.EchoRequest{
 		Body: "bodyarg",
@@ -77,7 +76,7 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := setupClientConn(t, 1000*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -103,9 +102,7 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 	t.Cleanup(s.Stop)
 
 	// Wait for the connection
-	assert.Eventually(t, func() bool {
-		return conn.GetState() == connectivity.Ready
-	}, 5*time.Second, 200*time.Millisecond)
+	waitForReadyConnection(t, conn)
 
 	resp, err := c.Echo(context.Background(), &pb.EchoRequest{
 		Body: "bodyarg",
@@ -115,13 +112,12 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 	assert.Equal(t, "bodyarg", resp.Body)
 }
 
-// This could result in a flakey test due to running the client in a goroutine
 func Test_BlockingDial(t *testing.T) {
 	// Setup Keys
 	keypairs := generateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
-	unblocked := make(chan struct{})
+	unblocked := make(chan *wsrpc.ClientConn)
 
 	go func() {
 		conn, err := setupClientConn(t, 5*time.Second,
@@ -129,9 +125,8 @@ func Test_BlockingDial(t *testing.T) {
 			wsrpc.WithBlock(),
 		)
 		require.NoError(t, err)
-		t.Cleanup(conn.Close)
 
-		unblocked <- struct{}{}
+		unblocked <- conn
 	}()
 
 	// Start the server in a goroutine. We wait to start up the server so we can
@@ -142,16 +137,14 @@ func Test_BlockingDial(t *testing.T) {
 
 	pb.RegisterClientToServerServer(s, &clientToServerServer{})
 
-	go func() {
-		time.Sleep(1 * time.Second)
-
-		s.Serve(lis)
-	}()
+	time.Sleep(500 * time.Millisecond)
+	go s.Serve(lis)
 	t.Cleanup(s.Stop)
 
 	// Wait for the connection
 	select {
-	case <-unblocked:
+	case conn := <-unblocked:
+		t.Cleanup(conn.Close)
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "did not connect")
 	}
@@ -162,7 +155,7 @@ func Test_BlockingDialTimeout(t *testing.T) {
 	keypairs := generateKeys(t)
 
 	// Start client
-	_, err := setupClientConn(t, 100*time.Millisecond,
+	_, err := setupClientConn(t, 50*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)
@@ -187,7 +180,7 @@ func Test_InvalidCredentials(t *testing.T) {
 	t.Cleanup(s.Stop)
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := setupClientConn(t, 100*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -201,7 +194,118 @@ func Test_InvalidCredentials(t *testing.T) {
 	// Update the servers allowed list of public keys to include the client's
 	s.UpdatePublicKeys([]ed25519.PublicKey{keypairs.Client1.PubKey})
 
-	assert.Eventually(t, func() bool {
+	waitForReadyConnection(t, conn)
+}
+
+func Test_ConcurrentCalls(t *testing.T) {
+	keypairs := generateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
+
+	// Start the server
+	lis, s := setupServer(t,
+		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+	)
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterClientToServerServer(s, &clientToServerServer{})
+
+	// Start serving
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+
+	// Start client
+	conn, err := setupClientConn(t, 5*time.Second,
+		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
+		wsrpc.WithBlock(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(conn.Close)
+
+	c := pb.NewClientToServerClient(conn)
+
+	respCh := make(chan *pb.EchoResponse)
+	defer close(respCh)
+
+	processEchos(t, c,
+		[]*echoReq{
+			{message: &pb.EchoRequest{Body: "call1", DelayMs: 500}},
+			{message: &pb.EchoRequest{Body: "call2"}, timeout: 200 * time.Millisecond},
+		},
+		respCh,
+	)
+
+	actual := waitForResponses(t, respCh, 2)
+
+	assert.Equal(t, "call2", actual[0].Body)
+	assert.Equal(t, "call1", actual[1].Body)
+}
+
+type echoReq struct {
+	timeout time.Duration
+	message *pb.EchoRequest
+}
+
+func processEchos(t *testing.T,
+	c pb.ClientToServerClient,
+	reqs []*echoReq,
+	ch chan<- *pb.EchoResponse,
+) {
+	t.Helper()
+
+	wg := sync.WaitGroup{}
+	for _, req := range reqs {
+		wg.Add(1)
+		go func() {
+			wg.Done()
+
+			ctx := context.Background()
+			if req.timeout > 0 {
+				tctx, cancel := context.WithTimeout(context.Background(), req.timeout)
+				defer cancel()
+
+				ctx = tctx
+			}
+
+			resp, err := c.Echo(ctx, req.message)
+			require.NoError(t, err)
+
+			ch <- resp
+		}()
+
+		wg.Wait()
+	}
+}
+
+func waitForResponses(t *testing.T, ch <-chan *pb.EchoResponse, limit int) []*pb.EchoResponse {
+	// Stores the calls in the order they were received. Call 1 should arrive second
+	// because of the delayed response.
+	resps := []*pb.EchoResponse{}
+	i := 0
+loop:
+	for {
+		if i == limit {
+			break
+		}
+
+		select {
+		case resp := <-ch:
+			resps = append(resps, resp)
+		case <-time.After(3 * time.Second):
+			break loop
+		}
+
+		i++
+	}
+
+	require.Len(t, resps, 2)
+
+	return resps
+}
+
+func waitForReadyConnection(t *testing.T, conn *wsrpc.ClientConn) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
 		return conn.GetState() == connectivity.Ready
-	}, 5*time.Second, 200*time.Millisecond)
+	}, 5*time.Second, 100*time.Millisecond)
 }

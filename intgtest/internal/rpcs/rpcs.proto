@@ -10,6 +10,7 @@ service ClientToServer {
 
 message EchoRequest {
     string body = 1;
+    int64 delayMs = 2;
 }
 
 message EchoResponse {
