@@ -10,21 +10,21 @@ import (
 	wsrpc "github.com/smartcontractkit/wsrpc"
 )
 
-// ClientToServerClient is the client API for ClientToServer service.
+// EchoClient is the client API for Echo service.
 //
-type ClientToServerClient interface {
+type EchoClient interface {
 	Echo(ctx context.Context, in *EchoRequest) (*EchoResponse, error)
 }
 
-type clientToServerClient struct {
+type echoClient struct {
 	cc wsrpc.ClientInterface
 }
 
-func NewClientToServerClient(cc wsrpc.ClientInterface) ClientToServerClient {
-	return &clientToServerClient{cc}
+func NewEchoClient(cc wsrpc.ClientInterface) EchoClient {
+	return &echoClient{cc}
 }
 
-func (c *clientToServerClient) Echo(ctx context.Context, in *EchoRequest) (*EchoResponse, error) {
+func (c *echoClient) Echo(ctx context.Context, in *EchoRequest) (*EchoResponse, error) {
 	out := new(EchoResponse)
 	err := c.cc.Invoke(ctx, "Echo", in, out)
 	if err != nil {
@@ -33,33 +33,33 @@ func (c *clientToServerClient) Echo(ctx context.Context, in *EchoRequest) (*Echo
 	return out, nil
 }
 
-// ClientToServerServer is the server API for ClientToServer service.
-type ClientToServerServer interface {
+// EchoServer is the server API for Echo service.
+type EchoServer interface {
 	Echo(context.Context, *EchoRequest) (*EchoResponse, error)
 }
 
-func RegisterClientToServerServer(s wsrpc.ServiceRegistrar, srv ClientToServerServer) {
-	s.RegisterService(&ClientToServer_ServiceDesc, srv)
+func RegisterEchoServer(s wsrpc.ServiceRegistrar, srv EchoServer) {
+	s.RegisterService(&Echo_ServiceDesc, srv)
 }
 
-func _ClientToServer_Echo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+func _Echo_Echo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
 	in := new(EchoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
-	return srv.(ClientToServerServer).Echo(ctx, in)
+	return srv.(EchoServer).Echo(ctx, in)
 }
 
-// ClientToServer_ServiceDesc is the wsrpc.ServiceDesc for ClientToServer service.
+// Echo_ServiceDesc is the wsrpc.ServiceDesc for Echo service.
 // It's only intended for direct use with wsrpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ClientToServer_ServiceDesc = wsrpc.ServiceDesc{
-	ServiceName: "rpcs.ClientToServer",
-	HandlerType: (*ClientToServerServer)(nil),
+var Echo_ServiceDesc = wsrpc.ServiceDesc{
+	ServiceName: "rpcs.Echo",
+	HandlerType: (*EchoServer)(nil),
 	Methods: []wsrpc.MethodDesc{
 		{
 			MethodName: "Echo",
-			Handler:    _ClientToServer_Echo_Handler,
+			Handler:    _Echo_Echo_Handler,
 		},
 	},
 }

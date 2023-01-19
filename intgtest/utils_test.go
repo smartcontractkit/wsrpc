@@ -4,22 +4,40 @@ import (
 	"context"
 	"crypto/ed25519"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/wsrpc"
+	"github.com/smartcontractkit/wsrpc/connectivity"
+	"github.com/smartcontractkit/wsrpc/credentials"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
+	"github.com/smartcontractkit/wsrpc/peer"
 )
 
 const targetURI = "127.0.0.1:1338"
 
 // Implements the ping server RPC call handlers
-type clientToServerServer struct{}
+type echoServer struct{}
 
 // Echo echoes the request back to the client
-func (s *clientToServerServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
+func (s *echoServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
+	if req.DelayMs > 0 {
+		time.Sleep(time.Duration(req.DelayMs) * time.Millisecond)
+	}
+
+	return &pb.EchoResponse{
+		Body: req.Body,
+	}, nil
+}
+
+// Implements the ping server RPC call handlers
+type serverToClientServer struct{}
+
+// Echo echoes the request back to the client
+func (s *serverToClientServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
 	if req.DelayMs > 0 {
 		time.Sleep(time.Duration(req.DelayMs) * time.Millisecond)
 	}
@@ -32,6 +50,15 @@ func (s *clientToServerServer) Echo(ctx context.Context, req *pb.EchoRequest) (*
 type keypair struct {
 	PubKey  ed25519.PublicKey
 	PrivKey ed25519.PrivateKey
+}
+
+func (kp keypair) StaticallySizedPublicKey(t *testing.T) credentials.StaticSizedPublicKey {
+	t.Helper()
+
+	pk, err := credentials.ToStaticallySizedPublicKey(kp.PubKey)
+	require.NoError(t, err)
+
+	return pk
 }
 
 type keys struct {
@@ -78,4 +105,84 @@ func setupServer(t *testing.T, opts ...wsrpc.ServerOption) (net.Listener, *wsrpc
 	require.NoError(t, err)
 
 	return lis, wsrpc.NewServer(opts...)
+}
+
+type echoReq struct {
+	// Sets the timeout on the request context. Defaults to no timeout
+	timeout time.Duration
+	// Insert the client connection's public key into the context. This is
+	// required for server to client calls, but optional for client to server
+	// calls
+	pubKey *credentials.StaticSizedPublicKey
+	// The message that will be sent in the request
+	message *pb.EchoRequest
+}
+
+func processEchos(t *testing.T,
+	c pb.EchoClient,
+	reqs []*echoReq,
+	ch chan<- *pb.EchoResponse,
+) {
+	t.Helper()
+
+	wg := sync.WaitGroup{}
+	for _, req := range reqs {
+		wg.Add(1)
+		go func() {
+			wg.Done()
+
+			ctx := context.Background()
+			if req.timeout > 0 {
+				tctx, cancel := context.WithTimeout(context.Background(), req.timeout)
+				defer cancel()
+
+				ctx = tctx
+			}
+
+			if req.pubKey != nil {
+				ctx = peer.NewCallContext(ctx, *req.pubKey)
+			}
+
+			resp, err := c.Echo(ctx, req.message)
+			require.NoError(t, err)
+
+			ch <- resp
+		}()
+
+		wg.Wait()
+	}
+}
+
+func waitForResponses(t *testing.T, ch <-chan *pb.EchoResponse, limit int) []*pb.EchoResponse {
+	// Stores the calls in the order they were received. Call 1 should arrive second
+	// because of the delayed response.
+	resps := []*pb.EchoResponse{}
+	i := 0
+loop:
+	for {
+		if i == limit {
+			break
+		}
+
+		select {
+		case resp := <-ch:
+			resps = append(resps, resp)
+		case <-time.After(3 * time.Second):
+			break loop
+		}
+
+		i++
+	}
+
+	require.Len(t, resps, 2)
+
+	return resps
+}
+
+func waitForReadyConnection(t *testing.T, conn *wsrpc.ClientConn) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		return conn.GetState() == connectivity.Ready
+	}, 5*time.Second, 100*time.Millisecond)
 }
