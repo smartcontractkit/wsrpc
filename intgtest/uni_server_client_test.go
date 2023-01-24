@@ -37,7 +37,7 @@ func Test_ServerClient_SimpleCall(t *testing.T) {
 	t.Cleanup(conn.Close)
 
 	// Register the handlers on the wsrpc client
-	pb.RegisterEchoServer(conn, &serverToClientServer{})
+	pb.RegisterEchoServer(conn, &echoServer{})
 
 	// Wait for the connection to be established
 	waitForReadyConnection(t, conn)
@@ -79,7 +79,7 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 	t.Cleanup(conn.Close)
 
 	// Register the handlers on the wsrpc client
-	pb.RegisterEchoServer(conn, &serverToClientServer{})
+	pb.RegisterEchoServer(conn, &echoServer{})
 
 	respCh := make(chan *pb.EchoResponse)
 	defer close(respCh)
