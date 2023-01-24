@@ -33,20 +33,6 @@ func (s *echoServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoRes
 	}, nil
 }
 
-// Implements the ping server RPC call handlers
-type serverToClientServer struct{}
-
-// Echo echoes the request back to the client
-func (s *serverToClientServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
-	if req.DelayMs > 0 {
-		time.Sleep(time.Duration(req.DelayMs) * time.Millisecond)
-	}
-
-	return &pb.EchoResponse{
-		Body: req.Body,
-	}, nil
-}
-
 type keypair struct {
 	PubKey  ed25519.PublicKey
 	PrivKey ed25519.PrivateKey
@@ -101,8 +87,18 @@ func setupClientConn(t *testing.T, timeout time.Duration, opts ...wsrpc.DialOpti
 // setupServer is a convenience method to set up a server for most testing
 // usecases.
 func setupServer(t *testing.T, opts ...wsrpc.ServerOption) (net.Listener, *wsrpc.Server) {
-	lis, err := net.Listen("tcp", targetURI)
-	require.NoError(t, err)
+	// Attempt to reconnect to the port which the OS may not have had time
+	// to clean up between tests.
+	var (
+		lis net.Listener
+		err error
+	)
+
+	require.Eventually(t, func() bool {
+		lis, err = net.Listen("tcp", targetURI)
+
+		return err == nil
+	}, 5*time.Second, 200*time.Millisecond)
 
 	return lis, wsrpc.NewServer(opts...)
 }
