@@ -303,6 +303,10 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 		return err
 	}
 
+	if cc.dopts.sendOnly {
+		return cc.handleSendOnly(reqB)
+	}
+
 	// Register a method call for the callID.
 	cc.mu.Lock()
 	wait := cc.registerMethodCall(ctx, callID)
@@ -337,6 +341,11 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	}
 
 	return nil
+}
+
+// handleSendOnly only writes to the server and doesn't wait for a response
+func (cc *ClientConn) handleSendOnly(reqBytes []byte) error {
+	return cc.conn.transport.Write(reqBytes)
 }
 
 // registerMethodCall registers a method call handler func.

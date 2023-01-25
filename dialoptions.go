@@ -13,9 +13,10 @@ import (
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
 // values passed to Dial.
 type dialOptions struct {
-	copts transport.ConnectOptions
-	bs    backoff.Strategy
-	block bool
+	copts    transport.ConnectOptions
+	bs       backoff.Strategy
+	block    bool
+	sendOnly bool
 }
 
 // DialOption configures how we set up the connection.
@@ -71,6 +72,12 @@ func WithBlock() DialOption {
 func WithWriteTimeout(d time.Duration) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.copts.WriteTimeout = d
+	})
+}
+
+func WithSendOnly(sendOnly bool) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.sendOnly = sendOnly
 	})
 }
 
