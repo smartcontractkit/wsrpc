@@ -241,6 +241,10 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 // handleMessageResponse finds the call which matches the method call id of the
 // response and sends the payload to the call channel.
 func (cc *ClientConn) handleMessageResponse(r *message.Response) {
+	if cc.dopts.sendOnly {
+		return
+	}
+
 	callID := r.GetCallId()
 
 	cc.mu.Lock()
