@@ -49,7 +49,7 @@ func newWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 	url := fmt.Sprintf("wss://%s", addr)
 	conn, _, err := d.DialContext(ctx, url, http.Header{})
 	if err != nil {
-		return nil, fmt.Errorf("[Transport] error while dialing %w", err)
+		return nil, fmt.Errorf("[wsrpc] error while dialing %w", err)
 	}
 
 	c := &WebsocketClient{
@@ -108,11 +108,18 @@ func (c WebsocketClient) start() {
 func (c *WebsocketClient) readPump() {
 	defer close(c.done)
 
+	//nolint:errcheck
+	c.conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.conn.SetPongHandler(handlePong(c.conn))
+
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
+			log.Println("[wsrpc] Read error: ", err)
+
 			return
 		}
+
 		c.read <- msg
 	}
 }
@@ -125,11 +132,6 @@ func (c *WebsocketClient) readPump() {
 func (c *WebsocketClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
-
-	// Pong Reply Handler
-	c.conn.SetPongHandler(func(string) error {
-		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	})
 
 	for {
 		select {
@@ -153,9 +155,7 @@ func (c *WebsocketClient) writePump() {
 		case <-ticker.C:
 			// Any error due to a closed connection will be immediately picked
 			// up in the subsequent network message read or write.
-			//nolint:errcheck
-			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
-			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+			if err := c.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(c.writeTimeout)); err != nil {
 				c.conn.Close()
 
 				return

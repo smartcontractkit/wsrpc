@@ -1,8 +1,7 @@
 package transport
 
 import (
-	"errors"
-	"net"
+	"log"
 	"sync"
 	"time"
 
@@ -102,41 +101,29 @@ func (s *WebsocketServer) start() {
 	s.writePump()
 }
 
-func (s *WebsocketServer) pingHandler(message string) error {
-	if err := s.conn.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		return err
-	}
-
-	err := s.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(s.writeTimeout))
-	if errors.Is(err, websocket.ErrCloseSent) {
-		return nil
-	} else if e, ok := err.(net.Error); ok && e.Temporary() { // nolint (we can't really use errors.As() since net.Error is an interface.)
-		return nil
-	}
-
-	return err
-}
-
 // readPump pumps messages from the websocket connection.
 //
 // The application runs readPump in a per-connection goroutine. The application
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
-	defer func() {
-		defer close(s.done)
-	}()
+	defer close(s.done)
 
-	s.conn.SetPingHandler(s.pingHandler)
+	//nolint:errcheck
+	s.conn.SetReadDeadline(time.Now().Add(pongWait))
+	s.conn.SetPongHandler(handlePong(s.conn))
 
 	for {
-		_, message, err := s.conn.ReadMessage()
+		_, msg, err := s.conn.ReadMessage()
 		// An error is provided when the websocket connection is closed,
 		// allowing us to clean up the goroutine.
 		if err != nil {
+			log.Println("[wsrpc] Read error: ", err)
+
 			break
 		}
-		s.read <- message
+
+		s.read <- msg
 	}
 }
 
@@ -146,6 +133,9 @@ func (s *WebsocketServer) readPump() {
 // server ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
 func (s *WebsocketServer) writePump() {
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-s.done:
@@ -157,8 +147,17 @@ func (s *WebsocketServer) writePump() {
 			// up in the subsequent network message read or write.
 			//nolint:errcheck
 			s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
-			err := s.conn.WriteMessage(websocket.BinaryMessage, msg)
-			if err != nil {
+			if err := s.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+				log.Printf("[wsrpc] write error: %v\n", err)
+
+				return
+			}
+		case <-ticker.C:
+			// Any error due to a closed connection will be immediately picked
+			// up in the subsequent network message read or write.
+			if err := s.conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(s.writeTimeout)); err != nil {
+				s.conn.Close()
+
 				return
 			}
 		case <-s.interrupt:

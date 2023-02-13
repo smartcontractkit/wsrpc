@@ -453,7 +453,8 @@ func (ac *addrConn) resetTransport() {
 			ac.updateConnectivityState(connectivity.TransientFailure)
 			ac.mu.Unlock()
 
-			// Backoff.
+			// Reconnection backoff time
+			log.Println("[wsrpc] attempting reconnection in", backoffFor)
 			timer := time.NewTimer(backoffFor)
 
 			select {
@@ -482,6 +483,8 @@ func (ac *addrConn) resetTransport() {
 		ac.updateConnectivityState(connectivity.Ready)
 
 		ac.mu.Unlock()
+
+		log.Println("[wsrpc] Connected to", ac.addr)
 
 		// Block until the created transport is down. When this happens, we
 		// attempt to reconnect by starting again from the top

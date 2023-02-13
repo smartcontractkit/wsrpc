@@ -84,3 +84,9 @@ type ServerTransport interface {
 func NewServerTransport(c *websocket.Conn, config *ServerConfig, onClose func()) (ServerTransport, error) {
 	return newWebsocketServer(c, config, onClose), nil
 }
+
+func handlePong(conn *websocket.Conn) func(string) error {
+	return func(msg string) error {
+		return conn.SetReadDeadline(time.Now().Add(pongWait))
+	}
+}
