@@ -121,6 +121,27 @@ func (cc *ClientConn) WaitForStateChange(ctx context.Context, sourceState connec
 	}
 }
 
+// WaitForReady waits until the state becomes Ready
+// It returns true when that happens
+// It returns false if the context is cancelled, or the conn is shut down
+func (cc *ClientConn) WaitForReady(ctx context.Context) bool {
+	ch := cc.csMgr.getNotifyChan()
+	switch cc.csMgr.getState() {
+	case connectivity.Ready:
+		return true
+	case connectivity.Shutdown:
+		return false
+	case connectivity.Idle, connectivity.Connecting, connectivity.TransientFailure:
+		break
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-ch:
+		return cc.WaitForReady(ctx)
+	}
+}
+
 // GetState gets the current connectivity state.
 func (cc *ClientConn) GetState() connectivity.State {
 	return cc.csMgr.getState()
