@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/smartcontractkit/wsrpc/credentials"
+	"github.com/smartcontractkit/wsrpc/logger"
 )
 
 const (
@@ -44,8 +45,8 @@ type ClientTransport interface {
 
 // NewClientTransport establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func NewClientTransport(ctx context.Context, addr string, opts ConnectOptions, onClose func()) (ClientTransport, error) {
-	return newWebsocketClient(ctx, addr, opts, onClose)
+func NewClientTransport(ctx context.Context, lggr logger.Logger, addr string, opts ConnectOptions, onClose func()) (ClientTransport, error) {
+	return newWebsocketClient(ctx, lggr, addr, opts, onClose)
 }
 
 // state of transport.
