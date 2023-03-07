@@ -8,14 +8,16 @@ import (
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
+	"github.com/smartcontractkit/wsrpc/logger"
 )
 
 // dialOptions configure a Dial call. dialOptions are set by the DialOption
 // values passed to Dial.
 type dialOptions struct {
-	copts transport.ConnectOptions
-	bs    backoff.Strategy
-	block bool
+	copts  transport.ConnectOptions
+	bs     backoff.Strategy
+	block  bool
+	logger logger.Logger
 }
 
 // DialOption configures how we set up the connection.
@@ -74,8 +76,15 @@ func WithWriteTimeout(d time.Duration) DialOption {
 	})
 }
 
+func WithLogger(lggr logger.Logger) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.logger = lggr
+	})
+}
+
 func defaultDialOptions() dialOptions {
 	return dialOptions{
-		copts: transport.ConnectOptions{},
+		copts:  transport.ConnectOptions{},
+		logger: logger.DefaultLogger,
 	}
 }

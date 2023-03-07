@@ -3,11 +3,11 @@ package transport
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/smartcontractkit/wsrpc/logger"
 )
 
 // WebsocketClient implements the ClientTransport interface with websockets.
@@ -31,11 +31,13 @@ type WebsocketClient struct {
 	done chan struct{}
 	// A signal channel called when the transport is closed
 	interrupt chan struct{}
+
+	log logger.Logger
 }
 
 // newWebsocketClient establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func newWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, onClose func()) (_ *WebsocketClient, err error) {
+func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, onClose func()) (_ *WebsocketClient, err error) {
 	writeTimeout := defaultWriteTimeout
 	if opts.WriteTimeout != 0 {
 		writeTimeout = opts.WriteTimeout
@@ -61,6 +63,7 @@ func newWebsocketClient(ctx context.Context, addr string, opts ConnectOptions, o
 		read:         make(chan []byte), // Should this be buffered?
 		done:         make(chan struct{}),
 		interrupt:    make(chan struct{}),
+		log:          log,
 	}
 
 	// Start go routines to establish the read/write channels
@@ -115,7 +118,7 @@ func (c *WebsocketClient) readPump() {
 	for {
 		_, msg, err := c.conn.ReadMessage()
 		if err != nil {
-			log.Println("[wsrpc] Read error: ", err)
+			c.log.Errorw("[wsrpc] Read error", "err", err)
 
 			return
 		}
@@ -146,7 +149,7 @@ func (c *WebsocketClient) writePump() {
 			c.conn.SetWriteDeadline(time.Now().Add(c.writeTimeout))
 			err := c.conn.WriteMessage(websocket.BinaryMessage, msg)
 			if err != nil {
-				log.Printf("[wsrpc] write error: %v\n", err)
+				c.log.Errorf("Write error: %v", err)
 
 				c.conn.Close()
 
