@@ -15,7 +15,6 @@ import (
 	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
-	"github.com/smartcontractkit/wsrpc/logger"
 )
 
 var (
@@ -55,8 +54,6 @@ type ClientConn struct {
 
 	// The RPC service definition
 	service *serviceInfo
-
-	logger logger.Logger
 }
 
 func Dial(target string, opts ...DialOption) (*ClientConn, error) {
@@ -136,7 +133,7 @@ func (cc *ClientConn) WaitForReady(ctx context.Context) bool {
 	case connectivity.Idle, connectivity.Connecting, connectivity.TransientFailure:
 		break
 	}
-	cc.logger.Debugf("Waiting for connection to be ready, current state: %s", cc.csMgr.getState())
+	cc.dopts.logger.Debugf("Waiting for connection to be ready, current state: %s", cc.csMgr.getState())
 	select {
 	case <-ctx.Done():
 		return false
@@ -225,7 +222,7 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 			case *message.Message_Response:
 				go cc.handleMessageResponse(ex.Response)
 			default:
-				cc.logger.Errorf("Invalid message type: %T", ex)
+				cc.dopts.logger.Errorf("Invalid message type: %T", ex)
 			}
 		case <-done:
 			return
@@ -257,7 +254,7 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 		}
 
 		if err := cc.conn.transport.Write(replyMsg); err != nil {
-			cc.logger.Errorf("error writing to transport: %s", err)
+			cc.dopts.logger.Errorf("error writing to transport: %s", err)
 		}
 	}
 }
