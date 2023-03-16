@@ -86,7 +86,9 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 	if err := addrConn.connect(); err != nil {
 		return nil, fmt.Errorf("error connecting: %w", err)
 	}
+	cc.mu.Lock()
 	cc.conn = addrConn
+	cc.mu.Unlock()
 
 	if cc.dopts.block {
 		for {
@@ -207,9 +209,14 @@ func (cc *ClientConn) listenForRead() {
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
 func (cc *ClientConn) handleRead(done <-chan struct{}) {
+	var tr transport.ClientTransport
+	cc.mu.RLock()
+	tr = cc.conn.transport
+	cc.mu.RUnlock()
+
 	for {
 		select {
-		case in := <-cc.conn.transport.Read():
+		case in := <-tr.Read():
 			// Unmarshal the message
 			msg := &message.Message{}
 			if err := UnmarshalProtoMessage(in, msg); err != nil {
@@ -253,7 +260,12 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 			return
 		}
 
-		if err := cc.conn.transport.Write(replyMsg); err != nil {
+		var tr transport.ClientTransport
+		cc.mu.RLock()
+		tr = cc.conn.transport
+		cc.mu.RUnlock()
+
+		if err := tr.Write(replyMsg); err != nil {
 			cc.dopts.logger.Errorf("error writing to transport: %s", err)
 		}
 	}
@@ -296,9 +308,9 @@ func (cc *ClientConn) register(sd *ServiceDesc, ss interface{}) {
 
 // Close tears down the ClientConn and all underlying connections.
 func (cc *ClientConn) Close() {
-	conn := cc.conn
 
 	cc.mu.Lock()
+	conn := cc.conn
 	cc.conn = nil
 	cc.mu.Unlock()
 
@@ -309,7 +321,11 @@ func (cc *ClientConn) Close() {
 // received.
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
-	if cc.conn.state != connectivity.Ready {
+	cc.mu.RLock()
+	state := cc.conn.state
+	cc.mu.RUnlock()
+
+	if state != connectivity.Ready {
 		return errors.New("connection is not ready")
 	}
 
@@ -336,7 +352,12 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 		cc.mu.Unlock()
 	}()
 
-	if err := cc.conn.transport.Write(reqB); err != nil {
+	var tr transport.ClientTransport
+	cc.mu.RLock()
+	tr = cc.conn.transport
+	cc.mu.RUnlock()
+
+	if err := tr.Write(reqB); err != nil {
 		return err
 	}
 
