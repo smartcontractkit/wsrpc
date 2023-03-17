@@ -42,14 +42,14 @@ func (fdo *funcServerOption) apply(do *serverOptions) {
 // Creds returns a ServerOption that sets credentials for server connections.
 func Creds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
-		pubs := credentials.PublicKeys(pubKeys)
+		pubs := credentials.NewPublicKeys(pubKeys...)
 
-		config, err := credentials.NewServerTLSConfig(privKey, &pubs)
+		config, err := credentials.NewServerTLSConfig(privKey, pubs)
 		if err != nil {
 			return
 		}
 
-		o.creds = credentials.NewTLS(config, &pubs)
+		o.creds = credentials.NewTLS(config, pubs)
 	})
 }
 

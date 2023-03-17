@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 )
 
 type StaticSizedPublicKey [ed25519.PublicKeySize]byte
@@ -82,7 +83,20 @@ func newMinimalX509Cert(priv ed25519.PrivateKey) (tls.Certificate, error) {
 }
 
 // PublicKeys wraps a slice of keys so we can update the keys dynamically.
-type PublicKeys []ed25519.PublicKey
+type PublicKeys struct {
+	mu   sync.RWMutex
+	keys []ed25519.PublicKey
+}
+
+func NewPublicKeys(keys ...ed25519.PublicKey) *PublicKeys {
+	return &PublicKeys{
+		keys: keys,
+	}
+}
+
+func (r *PublicKeys) Keys() []ed25519.PublicKey {
+	return r.keys
+}
 
 // Verifies that the certificate's public key matches with one of the keys in
 // our list of registered keys.
@@ -100,7 +114,7 @@ func (r *PublicKeys) VerifyPeerCertificate() func(rawCerts [][]byte, verifiedCha
 			return err
 		}
 
-		ok := isValidPublicKey(*r, pk)
+		ok := r.isValidPublicKey(pk)
 		if !ok {
 			return fmt.Errorf("unknown public key on cert %x", pk)
 		}
@@ -112,12 +126,16 @@ func (r *PublicKeys) VerifyPeerCertificate() func(rawCerts [][]byte, verifiedCha
 // Replace replaces the existing keys with new keys. Use this to dynamically
 // update the allowable keys at runtime.
 func (r *PublicKeys) Replace(pubs []ed25519.PublicKey) {
-	*r = PublicKeys(pubs)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.keys = pubs
 }
 
 // isValidPublicKey checks the public key against a list of valid keys.
-func isValidPublicKey(valid []ed25519.PublicKey, pub ed25519.PublicKey) bool {
-	for _, vpub := range valid {
+func (r *PublicKeys) isValidPublicKey(pub ed25519.PublicKey) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, vpub := range r.keys {
 		if pub.Equal(vpub) {
 			return true
 		}

@@ -116,7 +116,7 @@ type echoReq struct {
 
 func processEchos(t *testing.T,
 	c pb.EchoClient,
-	reqs []*echoReq,
+	reqs []echoReq,
 	ch chan<- *pb.EchoResponse,
 ) {
 	t.Helper()
@@ -124,7 +124,7 @@ func processEchos(t *testing.T,
 	wg := sync.WaitGroup{}
 	for _, req := range reqs {
 		wg.Add(1)
-		go func() {
+		go func(req echoReq) {
 			wg.Done()
 
 			ctx := context.Background()
@@ -143,7 +143,7 @@ func processEchos(t *testing.T,
 			require.NoError(t, err)
 
 			ch <- resp
-		}()
+		}(req)
 
 		wg.Wait()
 	}

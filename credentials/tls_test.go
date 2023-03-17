@@ -20,7 +20,7 @@ func Test_NewClientTLSConfig(t *testing.T) {
 	spub, spriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	tlsCfg, err := NewClientTLSConfig(cpriv, &PublicKeys{spub})
+	tlsCfg, err := NewClientTLSConfig(cpriv, NewPublicKeys(spub))
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
 
@@ -53,7 +53,7 @@ func Test_NewServerTLSConfig(t *testing.T) {
 	cpub, cpriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	tlsCfg, err := NewServerTLSConfig(spriv, &PublicKeys{cpub})
+	tlsCfg, err := NewServerTLSConfig(spriv, NewPublicKeys(cpub))
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
 

@@ -78,13 +78,12 @@ func Test_ClientServer_ConcurrentCalls(t *testing.T) {
 	respCh := make(chan *pb.EchoResponse)
 	defer close(respCh)
 
-	processEchos(t, c,
-		[]*echoReq{
-			{message: &pb.EchoRequest{Body: "call1", DelayMs: 500}},
-			{message: &pb.EchoRequest{Body: "call2"}, timeout: 200 * time.Millisecond},
-		},
-		respCh,
-	)
+	reqs := []echoReq{
+		{message: &pb.EchoRequest{Body: "call1", DelayMs: 500}},
+		{message: &pb.EchoRequest{Body: "call2"}, timeout: 200 * time.Millisecond},
+	}
+
+	processEchos(t, c, reqs, respCh)
 
 	actual := waitForResponses(t, respCh, 2)
 

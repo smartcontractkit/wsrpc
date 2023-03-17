@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/examples/simple/keys"
 
 	"github.com/stretchr/testify/assert"
@@ -25,14 +24,14 @@ func Test_Server_UpdatePublicKeys(t *testing.T) {
 		Creds(sPrivKey, []ed25519.PublicKey{c1PubKey}),
 	)
 
-	assert.Equal(t, credentials.PublicKeys([]ed25519.PublicKey{c1PubKey}), *s.opts.creds.PublicKeys)
+	assert.Equal(t, []ed25519.PublicKey{c1PubKey}, s.opts.creds.PublicKeys.Keys())
 
 	c2PubKey, _, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
 	s.UpdatePublicKeys([]ed25519.PublicKey{c2PubKey})
 
-	assert.Equal(t, credentials.PublicKeys([]ed25519.PublicKey{c2PubKey}), *s.opts.creds.PublicKeys)
+	assert.Equal(t, []ed25519.PublicKey{c2PubKey}, s.opts.creds.PublicKeys.Keys())
 }
 
 func Test_Healthcheck(t *testing.T) {

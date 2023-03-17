@@ -48,8 +48,8 @@ type UniClientConn struct {
 
 // DialUniWithContext will blocks until connection is established or context expires.
 func DialUniWithContext(ctx context.Context, lggr Logger, target string, privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) (*UniClientConn, error) {
-	pubs := credentials.PublicKeys{serverPubKey}
-	tlsConfig, err := credentials.NewClientTLSConfig(privKey, &pubs)
+	pubs := credentials.NewPublicKeys(serverPubKey)
+	tlsConfig, err := credentials.NewClientTLSConfig(privKey, pubs)
 	if err != nil {
 		return nil, err
 	}

@@ -85,13 +85,12 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 	defer close(respCh)
 
 	pk := keypairs.Client1.StaticallySizedPublicKey(t)
-	processEchos(t, c,
-		[]*echoReq{
-			{message: &pb.EchoRequest{Body: "call1", DelayMs: 500}, pubKey: &pk},
-			{message: &pb.EchoRequest{Body: "call2"}, timeout: 200 * time.Millisecond, pubKey: &pk},
-		},
-		respCh,
-	)
+	reqs := []echoReq{
+		{message: &pb.EchoRequest{Body: "call1", DelayMs: 500}, pubKey: &pk},
+		{message: &pb.EchoRequest{Body: "call2"}, timeout: 200 * time.Millisecond, pubKey: &pk},
+	}
+
+	processEchos(t, c, reqs, respCh)
 
 	actual := waitForResponses(t, respCh, 2)
 

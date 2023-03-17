@@ -210,8 +210,21 @@ func (cc *ClientConn) listenForRead() {
 // readFn handler.
 func (cc *ClientConn) handleRead(done <-chan struct{}) {
 	var tr transport.ClientTransport
+	var conn *addrConn
+
 	cc.mu.RLock()
+	conn = cc.conn
+
+	// if connection has been closed, then conn can be nil
+	if conn == nil {
+		cc.mu.RUnlock()
+
+		return
+	}
+
+	conn.mu.RLock()
 	tr = cc.conn.transport
+	conn.mu.RUnlock()
 	cc.mu.RUnlock()
 
 	for {
@@ -262,7 +275,9 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 
 		var tr transport.ClientTransport
 		cc.mu.RLock()
+		cc.conn.mu.RLock()
 		tr = cc.conn.transport
+		cc.conn.mu.RUnlock()
 		cc.mu.RUnlock()
 
 		if err := tr.Write(replyMsg); err != nil {
@@ -322,7 +337,9 @@ func (cc *ClientConn) Close() {
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 	cc.mu.RLock()
+	cc.conn.mu.RLock()
 	state := cc.conn.state
+	cc.conn.mu.RUnlock()
 	cc.mu.RUnlock()
 
 	if state != connectivity.Ready {
@@ -354,7 +371,9 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 
 	var tr transport.ClientTransport
 	cc.mu.RLock()
+	cc.conn.mu.RLock()
 	tr = cc.conn.transport
+	cc.conn.mu.RUnlock()
 	cc.mu.RUnlock()
 
 	if err := tr.Write(reqB); err != nil {
@@ -419,7 +438,7 @@ type addrConn struct {
 	// after transport is closed, ac has been torn down).
 	transport transport.ClientTransport // The current transport.
 
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	// Use updateConnectivityState for updating addrConn's connectivity state.
 	state connectivity.State
