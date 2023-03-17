@@ -141,6 +141,8 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	onClose := func() {
 		// There is no connection manager when we are shutting down, so
 		// we can ignore removing the connection.
+		s.mu.RLock()
+		defer s.mu.RUnlock()
 		if s.connMgr != nil {
 			s.connMgr.mu.Lock()
 			s.connMgr.removeConnection(pubKey)
@@ -157,7 +159,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Register the transport against the public key
+	s.mu.RLock()
 	s.connMgr.registerConnection(pubKey, tr)
+	s.mu.RUnlock()
 
 	s.serveWG.Add(1)
 
@@ -175,7 +179,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 // sendMsg writes the message to the connection which matches the public key.
 func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 	// Find the transport matching the public key
+	s.mu.RLock()
 	tr, err := s.connMgr.getTransport(pub)
+	s.mu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -186,7 +192,9 @@ func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
 func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan struct{}) {
+	s.mu.RLock()
 	tr, err := s.connMgr.getTransport(pubKey)
+	s.mu.RUnlock()
 	if err != nil {
 		return
 	}
@@ -340,7 +348,7 @@ func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.opts.creds.PublicKeys.Replace(pubKeys)
+	s.opts.creds.PublicKeys.Replace(pubKeys) //credentials.NewPublicKeys(pubKeys...)
 	s.removeConnectionsToDeletedKeys(pubKeys)
 }
 
@@ -349,6 +357,8 @@ func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
 func (s *Server) GetConnectionNotifyChan() <-chan struct{} {
+	s.mu.RLock()
+	defer s.mu.Unlock()
 	return s.connMgr.getNotifyChan()
 }
 
@@ -358,6 +368,8 @@ func (s *Server) GetConnectionNotifyChan() <-chan struct{} {
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
 func (s *Server) GetConnectedPeerPublicKeys() []credentials.StaticSizedPublicKey {
+	s.mu.RLock()
+	defer s.mu.Unlock()
 	return s.connMgr.getConnectionPublicKeys()
 }
 
@@ -413,8 +425,9 @@ func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.
 	if err != nil {
 		return pubKey, errors.New("could not extracting public key from certificate")
 	}
-
+	s.mu.RLock()
 	_, err = s.connMgr.getTransport(pubKey)
+	s.mu.RUnlock()
 	if err == nil {
 		return pubKey, errors.New("only one connection allowed per client")
 	}
@@ -441,7 +454,7 @@ func (s *Server) removeMethodCall(id string) {
 
 // connectionsManager manages the active clients connections.
 type connectionsManager struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 	// Holds a list of the open connections mapped to a buffered channel of
 	// outbound messages.
 	conns map[credentials.StaticSizedPublicKey]transport.ServerTransport
@@ -457,8 +470,8 @@ func newConnectionsManager() *connectionsManager {
 
 // getTransport fetches the transport which matches the public key.
 func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey) (transport.ServerTransport, error) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 
 	tr, ok := cm.conns[key]
 	if !ok {
@@ -496,8 +509,8 @@ func (cm *connectionsManager) removeConnection(key credentials.StaticSizedPublic
 
 // getConnectionPublicKeys gets the public keys of the active connections.
 func (cm *connectionsManager) getConnectionPublicKeys() []credentials.StaticSizedPublicKey {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 
 	keys := []credentials.StaticSizedPublicKey{}
 	for k := range cm.conns {
@@ -521,6 +534,8 @@ func (cm *connectionsManager) getNotifyChan() <-chan struct{} {
 
 // close closes all registered connections.
 func (cm *connectionsManager) close() {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
 	for _, conn := range cm.conns {
 		conn.Close()
 	}
