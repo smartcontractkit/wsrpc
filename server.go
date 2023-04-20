@@ -358,7 +358,7 @@ func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
 // later release.
 func (s *Server) GetConnectionNotifyChan() <-chan struct{} {
 	s.mu.RLock()
-	defer s.mu.Unlock()
+	defer s.mu.RUnlock()
 	return s.connMgr.getNotifyChan()
 }
 
@@ -369,7 +369,7 @@ func (s *Server) GetConnectionNotifyChan() <-chan struct{} {
 // later release.
 func (s *Server) GetConnectedPeerPublicKeys() []credentials.StaticSizedPublicKey {
 	s.mu.RLock()
-	defer s.mu.Unlock()
+	defer s.mu.RUnlock()
 	return s.connMgr.getConnectionPublicKeys()
 }
 
