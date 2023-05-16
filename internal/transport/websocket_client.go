@@ -78,10 +78,17 @@ func (c *WebsocketClient) Read() <-chan []byte {
 }
 
 // Write writes a message the websocket connection.
-func (c *WebsocketClient) Write(msg []byte) error {
-	c.write <- msg
-
-	return nil
+func (c *WebsocketClient) Write(ctx context.Context, msg []byte) error {
+	select {
+	case <-c.done:
+		return fmt.Errorf("[wsrpc] could not write message, websocket is closed")
+	case <-c.interrupt:
+		return fmt.Errorf("[wsrpc] could not write message, transport is closed")
+	case <-ctx.Done():
+		return fmt.Errorf("[wsrpc] could not write message, context is done")
+	case c.write <- msg:
+		return nil
+	}
 }
 
 // Close closes the websocket connection and cleans up pump goroutines.

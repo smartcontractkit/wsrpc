@@ -177,7 +177,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // sendMsg writes the message to the connection which matches the public key.
-func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
+func (s *Server) sendMsg(ctx context.Context, pub [32]byte, msg []byte) error {
 	// Find the transport matching the public key
 	s.mu.RLock()
 	tr, err := s.connMgr.getTransport(pub)
@@ -186,7 +186,7 @@ func (s *Server) sendMsg(pub [32]byte, msg []byte) error {
 		return err
 	}
 
-	return tr.Write(msg)
+	return tr.Write(ctx, msg)
 }
 
 // handleRead listens to the transport read channel and passes the message to the
@@ -248,7 +248,7 @@ func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r
 			return
 		}
 
-		if err := s.sendMsg(pubKey, replyMsg); err != nil {
+		if err := s.sendMsg(ctx, pubKey, replyMsg); err != nil {
 			log.Printf("error sending message: %s", err)
 		}
 	}
@@ -314,7 +314,7 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 	}
 	pubKey := p.PublicKey
 
-	if err = s.sendMsg(pubKey, req); err != nil {
+	if err = s.sendMsg(ctx, pubKey, req); err != nil {
 		return err
 	}
 

@@ -1,6 +1,8 @@
 package transport
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -61,11 +63,17 @@ func (s *WebsocketServer) Read() <-chan []byte {
 }
 
 // Write writes a message the websocket connection.
-func (s *WebsocketServer) Write(msg []byte) error {
-	// Send the message to the channel
-	s.write <- msg
-
-	return nil
+func (s *WebsocketServer) Write(ctx context.Context, msg []byte) error {
+	select {
+	case <-s.done:
+		return fmt.Errorf("[wsrpc] could not write message, websocket is closed")
+	case <-s.interrupt:
+		return fmt.Errorf("[wsrpc] could not write message, transport is closed")
+	case <-ctx.Done():
+		return fmt.Errorf("[wsrpc] could not write message, context is done")
+	case s.write <- msg:
+		return nil
+	}
 }
 
 // Close closes the websocket connection and cleans up pump goroutines. Notifies
