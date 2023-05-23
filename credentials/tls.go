@@ -13,6 +13,10 @@ import (
 
 type StaticSizedPublicKey [ed25519.PublicKeySize]byte
 
+func (p StaticSizedPublicKey) String() string {
+	return fmt.Sprintf("%x", p[:])
+}
+
 // NewClientTLSConfig uses the private key and public keys to construct a mutual
 // TLS config for the client.
 func NewClientTLSConfig(priv ed25519.PrivateKey, pubs *PublicKeys) (*tls.Config, error) {
