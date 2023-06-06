@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,4 +62,58 @@ func Test_Healthcheck(t *testing.T) {
 		return assert.Equal(t, http.StatusOK, resp.StatusCode)
 	}, 1*time.Second, 100*time.Millisecond)
 
+}
+
+func Test_Server_HTTPTimeout_Defaults(t *testing.T) {
+	// Start the server
+	privKey := keys.FromHex("c1afd224cec2ff6066746bf9b7cdf7f9f4694ab7ef2ca1692ff923a30df203483b0f149627adb7b6fafe1497a9dfc357f22295a5440786c3bc566dfdb0176808")
+	pubKeys := []ed25519.PublicKey{}
+
+	defaultServer := NewServer(
+		Creds(privKey, pubKeys),
+		WithHealthcheck("127.0.0.1:1337"),
+	)
+
+	assert.Equal(t, 5*time.Second, defaultServer.opts.healthcheckTimeout)
+	assert.Equal(t, 10*time.Second, defaultServer.opts.wsTimeout)
+
+	expectedTimeout := 1 * time.Nanosecond
+	timeoutServer := NewServer(
+		Creds(privKey, pubKeys),
+		WithHealthcheck("127.0.0.1:1337"),
+		WithHTTPReadTimeout(expectedTimeout, expectedTimeout*2),
+	)
+	assert.Equal(t, expectedTimeout, timeoutServer.opts.healthcheckTimeout)
+	assert.Equal(t, expectedTimeout*2, timeoutServer.opts.wsTimeout)
+}
+
+func Test_Server_HTTPTimeout(t *testing.T) {
+	// Start the server
+	privKey := keys.FromHex("c1afd224cec2ff6066746bf9b7cdf7f9f4694ab7ef2ca1692ff923a30df203483b0f149627adb7b6fafe1497a9dfc357f22295a5440786c3bc566dfdb0176808")
+	pubKeys := []ed25519.PublicKey{}
+
+	lis, err := net.Listen("tcp", "127.0.0.1:1338")
+	require.NoError(t, err)
+
+	expectedTimeout := 1 * time.Nanosecond
+	s := NewServer(
+		Creds(privKey, pubKeys),
+		WithHealthcheck("127.0.0.1:1337"),
+		WithHTTPReadTimeout(expectedTimeout, expectedTimeout*2),
+	)
+
+	// Start serving
+	go s.Serve(lis)
+	defer s.Stop()
+
+	// Test until the server boots
+	assert.Eventually(t, func() bool {
+		// Run a http call
+		_, err := http.Get("http://127.0.0.1:1337/healthz")
+		if err != nil {
+			return strings.Contains(err.Error(), "EOF") // Check if the error contains "timeout"
+		}
+
+		return false
+	}, 1*time.Second, 100*time.Millisecond)
 }

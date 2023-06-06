@@ -89,7 +89,8 @@ func (s *Server) Serve(lis net.Listener) {
 		})
 
 		hcsrv := &http.Server{
-			Handler: hchandler,
+			Handler:     hchandler,
+			ReadTimeout: s.opts.healthcheckTimeout,
 		}
 
 		//nolint:errcheck
@@ -101,8 +102,9 @@ func (s *Server) Serve(lis net.Listener) {
 	wshandler := http.NewServeMux()
 	wshandler.HandleFunc("/", s.wshandler)
 	wssrv := &http.Server{
-		TLSConfig: s.opts.creds.Config,
-		Handler:   wshandler,
+		TLSConfig:   s.opts.creds.Config,
+		Handler:     wshandler,
+		ReadTimeout: s.opts.wsTimeout,
 	}
 
 	//nolint:errcheck
