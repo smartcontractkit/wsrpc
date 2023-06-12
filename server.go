@@ -160,8 +160,8 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		s.mu.RUnlock()
 		return
 	}
-
 	s.serveWG.Add(1)
+
 	// Initialize the transport
 	tr, err := transport.NewServerTransport(conn, config, onClose)
 	if err != nil {
@@ -491,9 +491,6 @@ func newConnectionsManager() *connectionsManager {
 
 // getTransport fetches the transport which matches the public key.
 func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey) (transport.ServerTransport, error) {
-	if cm == nil {
-		return nil, ErrServerShuttingDown
-	}
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
@@ -507,10 +504,6 @@ func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey)
 
 // registerConnection registers a new transport mapped to a public key.
 func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPublicKey, value transport.ServerTransport) (err error) {
-	if cm == nil {
-		err = ErrServerShuttingDown
-		return
-	}
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.conns[key] = value
