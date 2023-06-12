@@ -82,8 +82,8 @@ type ServerTransport interface {
 
 // NewServerTransport creates a ServerTransport with conn or non-nil error
 // if it fails.
-func NewServerTransport(c *websocket.Conn, config *ServerConfig, onClose func()) (ServerTransport, error) {
-	return newWebsocketServer(c, config, onClose), nil
+func NewServerTransport(c *websocket.Conn, config *ServerConfig, onClose func(), onStart func()) (ServerTransport, error) {
+	return newWebsocketServer(c, config, onClose, onStart), nil
 }
 
 func handlePong(conn *websocket.Conn) func(string) error {

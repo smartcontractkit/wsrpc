@@ -22,6 +22,9 @@ type WebsocketServer struct {
 	// The current state of the server transport
 	state transportState
 
+	// Callback function called when the transport is opened
+	onStart func()
+
 	// Callback function called when the transport is closed
 	onClose func()
 
@@ -36,7 +39,7 @@ type WebsocketServer struct {
 }
 
 // newWebsocketServer server upgrades an HTTP connection to a websocket connection.
-func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) *WebsocketServer {
+func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func(), onStart func()) *WebsocketServer {
 	writeTimeout := defaultWriteTimeout
 	if config.WriteTimeout != 0 {
 		writeTimeout = config.WriteTimeout
@@ -46,6 +49,7 @@ func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func())
 		writeTimeout: writeTimeout,
 		conn:         c,
 		onClose:      onClose,
+		onStart:      onStart,
 		write:        make(chan []byte),
 		read:         make(chan []byte),
 		done:         make(chan struct{}),
@@ -103,6 +107,7 @@ func (s *WebsocketServer) start() {
 		s.Close()
 		s.onClose()
 	}()
+	s.onStart()
 
 	// Set up reader
 	go s.readPump()

@@ -22,6 +22,7 @@ import (
 )
 
 var ErrNotConnected = errors.New("client not connected")
+var ErrServerShuttingDown = errors.New("read attempted after shutdown")
 
 // Server is a wsrpc server to both perform and serve RPC requests.
 type Server struct {
@@ -139,6 +140,10 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	// messages) and then ensures the handler to returns
 	done := make(chan struct{})
 
+	// A signal channel to coordinate when s.serveWG.Add has been called,
+	// so s.serveWG.Done is not called beforehand
+	//added := wsrpcsync.NewEvent()
+
 	config := &transport.ServerConfig{}
 	onClose := func() {
 		// There is no connection manager when we are shutting down, so
@@ -154,18 +159,25 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		close(done)
 	}
 
+	onStart := func() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		s.serveWG.Add(1)
+	}
+
 	// Initialize the transport
-	tr, err := transport.NewServerTransport(conn, config, onClose)
+	tr, err := transport.NewServerTransport(conn, config, onClose, onStart)
 	if err != nil {
 		return
 	}
 
 	// Register the transport against the public key
 	s.mu.RLock()
-	s.connMgr.registerConnection(pubKey, tr)
+	err = s.connMgr.registerConnection(pubKey, tr)
 	s.mu.RUnlock()
-
-	s.serveWG.Add(1)
+	if err != nil {
+		return
+	}
 
 	// Start the reader handler
 	go s.handleRead(pubKey, done)
@@ -180,6 +192,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 
 // sendMsg writes the message to the connection which matches the public key.
 func (s *Server) sendMsg(ctx context.Context, pub [32]byte, msg []byte) error {
+	if s.quit.HasFired() {
+		return ErrServerShuttingDown
+	}
 	// Find the transport matching the public key
 	s.mu.RLock()
 	tr, err := s.connMgr.getTransport(pub)
@@ -194,6 +209,10 @@ func (s *Server) sendMsg(ctx context.Context, pub [32]byte, msg []byte) error {
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
 func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan struct{}) {
+	if s.quit.HasFired() {
+		return
+	}
+
 	s.mu.RLock()
 	tr, err := s.connMgr.getTransport(pubKey)
 	s.mu.RUnlock()
@@ -203,6 +222,9 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 
 	for {
 		select {
+		case <-done:
+			return
+
 		case in := <-tr.Read():
 			// Unmarshal the message
 			msg := &message.Message{}
@@ -219,8 +241,6 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 			default:
 				log.Println("Invalid message type")
 			}
-		case <-done:
-			return
 		}
 	}
 }
@@ -378,6 +398,9 @@ func (s *Server) GetConnectedPeerPublicKeys() []credentials.StaticSizedPublicKey
 // Stop stops the wsRPC server. It immediately closes all open
 // connections and listeners.
 func (s *Server) Stop() {
+	if s.quit.HasFired() {
+		return
+	}
 	s.quit.Fire()
 	defer func() {
 		s.done.Fire()
@@ -472,6 +495,9 @@ func newConnectionsManager() *connectionsManager {
 
 // getTransport fetches the transport which matches the public key.
 func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey) (transport.ServerTransport, error) {
+	if cm == nil {
+		return nil, ErrServerShuttingDown
+	}
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
@@ -484,7 +510,11 @@ func (cm *connectionsManager) getTransport(key credentials.StaticSizedPublicKey)
 }
 
 // registerConnection registers a new transport mapped to a public key.
-func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPublicKey, value transport.ServerTransport) {
+func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPublicKey, value transport.ServerTransport) (err error) {
+	if cm == nil {
+		err = ErrServerShuttingDown
+		return
+	}
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.conns[key] = value
@@ -494,6 +524,8 @@ func (cm *connectionsManager) registerConnection(key credentials.StaticSizedPubl
 		close(cm.notifyChan)
 		cm.notifyChan = nil
 	}
+
+	return
 }
 
 // removeConnection removes a transport from the registered list.
