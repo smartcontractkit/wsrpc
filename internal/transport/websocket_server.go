@@ -107,7 +107,7 @@ func (s *WebsocketServer) start() {
 		s.Close()
 		s.onClose()
 	}()
-	s.onStart()
+	//s.onStart()
 
 	// Set up reader
 	go s.readPump()

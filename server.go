@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -156,9 +157,19 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	onStart := func() {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
+		// s.mu.RLock()
+		// defer s.mu.RUnlock()
 		s.serveWG.Add(1)
+		time.Sleep(150 * time.Millisecond)
+	}
+
+
+	// Register the transport against the public key
+	s.mu.RLock()
+
+	if nil == s.connMgr {
+		s.mu.RUnlock()
+		return
 	}
 
 	// Initialize the transport
@@ -166,9 +177,6 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-
-	// Register the transport against the public key
-	s.mu.RLock()
 	err = s.connMgr.registerConnection(pubKey, tr)
 	s.mu.RUnlock()
 	if err != nil {
