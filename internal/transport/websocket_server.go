@@ -39,7 +39,7 @@ type WebsocketServer struct {
 }
 
 // newWebsocketServer server upgrades an HTTP connection to a websocket connection.
-func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func(), onStart func()) *WebsocketServer {
+func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) *WebsocketServer {
 	writeTimeout := defaultWriteTimeout
 	if config.WriteTimeout != 0 {
 		writeTimeout = config.WriteTimeout
@@ -49,7 +49,6 @@ func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func(),
 		writeTimeout: writeTimeout,
 		conn:         c,
 		onClose:      onClose,
-		onStart:      onStart,
 		write:        make(chan []byte),
 		read:         make(chan []byte),
 		done:         make(chan struct{}),
