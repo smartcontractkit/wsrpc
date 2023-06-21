@@ -49,9 +49,9 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 	}
 
 	url := fmt.Sprintf("wss://%s", addr)
-	conn, _, err := d.DialContext(ctx, url, http.Header{})
+	conn, resp, err := d.DialContext(ctx, url, http.Header{})
 	if err != nil {
-		return nil, fmt.Errorf("[wsrpc] error while dialing %w", err)
+		return nil, fmt.Errorf("[wsrpc] error while dialing %w\n%v", err, resp)
 	}
 
 	c := &WebsocketClient{
