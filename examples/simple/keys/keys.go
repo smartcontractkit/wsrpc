@@ -4,7 +4,7 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
-
+	"fmt"
 	"github.com/smartcontractkit/wsrpc/credentials"
 )
 
@@ -56,6 +56,9 @@ func FromHex(keyHex string) []byte {
 // ToStaticSizedBytes convert bytes to a statically sized byte array of the
 // of ed25519.PublicKeySize
 func ToStaticSizedBytes(b []byte) (credentials.StaticSizedPublicKey, error) {
+	if len(b) != ed25519.PublicKeySize {
+		return credentials.StaticSizedPublicKey{}, fmt.Errorf("provided public key is %d bytes, expected %d bytes", len(b), ed25519.PublicKeySize)
+	}
 	var sb credentials.StaticSizedPublicKey
 
 	if ed25519.PublicKeySize != copy(sb[:], b) {
