@@ -1,4 +1,4 @@
-package intgtest
+package connection_test
 
 import (
 	"context"
@@ -13,14 +13,15 @@ import (
 	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
+	"github.com/smartcontractkit/wsrpc/intgtest/utils"
 )
 
 func Test_ServerNotRunning(t *testing.T) {
 	// Setup Keys
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -36,11 +37,11 @@ func Test_ServerNotRunning(t *testing.T) {
 
 func Test_AutomatedConnectionRetry(t *testing.T) {
 	// Setup Keys
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start client
-	conn, err := setupClientConn(t, 1000*time.Millisecond,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -54,19 +55,19 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 	assert.Error(t, err, "connection is not ready")
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	// Start serving
 	go s.Serve(lis)
 	t.Cleanup(s.Stop)
 
 	// Wait for the connection
-	waitForReadyConnection(t, conn)
+	utils.WaitForReadyConnection(t, conn)
 
 	resp, err := c.Echo(context.Background(), &pb.EchoRequest{
 		Body: "bodyarg",
@@ -78,13 +79,13 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 
 func Test_BlockingDial(t *testing.T) {
 	// Setup Keys
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	unblocked := make(chan *wsrpc.ClientConn)
 
 	go func() {
-		conn, err := setupClientConn(t, 5*time.Second,
+		conn, err := utils.SetupClientConn(t, 5*time.Second,
 			wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 			wsrpc.WithBlock(),
 		)
@@ -95,11 +96,11 @@ func Test_BlockingDial(t *testing.T) {
 
 	// Start the server in a goroutine. We wait to start up the server so we can
 	// test the blocking mechanism.
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	time.Sleep(500 * time.Millisecond)
 	go s.Serve(lis)
@@ -116,10 +117,10 @@ func Test_BlockingDial(t *testing.T) {
 
 func Test_BlockingDialTimeout(t *testing.T) {
 	// Setup Keys
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 
 	// Start client
-	_, err := setupClientConn(t, 50*time.Millisecond,
+	_, err := utils.SetupClientConn(t, 50*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)
@@ -128,50 +129,50 @@ func Test_BlockingDialTimeout(t *testing.T) {
 }
 
 func Test_InvalidCredentials(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client2.PubKey}
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	// Start serving
 	go s.Serve(lis)
 	t.Cleanup(s.Stop)
 
 	// Start client
-	conn, err := setupClientConn(t, 100*time.Millisecond,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
 	t.Cleanup(conn.Close)
 
 	// Test that it fails to connect
-	assert.Eventually(t, func() bool {
+	require.Eventually(t, func() bool {
 		return conn.GetState() == connectivity.TransientFailure
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// Update the servers allowed list of public keys to include the client's
 	s.UpdatePublicKeys([]ed25519.PublicKey{keypairs.Client1.PubKey})
 
-	waitForReadyConnection(t, conn)
+	utils.WaitForReadyConnection(t, conn)
 }
 
 func Test_GetConnectedPeerPublicKeys(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	// Start serving
 	go s.Serve(lis)
@@ -180,13 +181,14 @@ func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 	require.Empty(t, s.GetConnectedPeerPublicKeys())
 
 	// Start client
-	conn, err := setupClientConn(t, 100*time.Millisecond,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
 	t.Cleanup(conn.Close)
 
-	waitForReadyConnection(t, conn)
+	// TODO problematic line
+	utils.WaitForReadyConnection(t, conn)
 
 	connectedKeys := s.GetConnectedPeerPublicKeys()
 	require.Len(t, s.GetConnectedPeerPublicKeys(), 1)
@@ -196,16 +198,16 @@ func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 }
 
 func Test_GetNotificationChan(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	// Start serving
 	go s.Serve(lis)
@@ -214,13 +216,13 @@ func Test_GetNotificationChan(t *testing.T) {
 	notifyChan := s.GetConnectionNotifyChan()
 
 	// Start client
-	conn, err := setupClientConn(t, 100*time.Millisecond,
+	conn, err := utils.SetupClientConn(t, 100*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
 	t.Cleanup(conn.Close)
 
-	waitForReadyConnection(t, conn)
+	utils.WaitForReadyConnection(t, conn)
 
 	// Wait for connection notification
 	select {

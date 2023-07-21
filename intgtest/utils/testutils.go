@@ -1,4 +1,4 @@
-package intgtest
+package utils
 
 import (
 	"context"
@@ -14,16 +14,17 @@ import (
 	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
+	"github.com/smartcontractkit/wsrpc/logger"
 	"github.com/smartcontractkit/wsrpc/peer"
 )
 
 const targetURI = "127.0.0.1:1338"
 
 // Implements the ping server RPC call handlers
-type echoServer struct{}
+type EchoServer struct{}
 
 // Echo echoes the request back to the client
-func (s *echoServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
+func (s *EchoServer) Echo(ctx context.Context, req *pb.EchoRequest) (*pb.EchoResponse, error) {
 	if req.DelayMs > 0 {
 		time.Sleep(time.Duration(req.DelayMs) * time.Millisecond)
 	}
@@ -53,8 +54,8 @@ type keys struct {
 	Client2 keypair
 }
 
-// generateKeys generates keypairs for the server and clients.
-func generateKeys(t *testing.T) keys {
+// GenerateKeys generates keypairs for the server and clients.
+func GenerateKeys(t *testing.T) keys {
 	t.Helper()
 
 	// Setup Keys
@@ -74,19 +75,21 @@ func generateKeys(t *testing.T) keys {
 	}
 }
 
-// setupClientConn is a convenience method to setup a client connection for most
+// SetupClientConn is a convenience method to setup a client connection for most
 // testing usecases.
-func setupClientConn(t *testing.T, timeout time.Duration, opts ...wsrpc.DialOption) (*wsrpc.ClientConn, error) {
+func SetupClientConn(t *testing.T, timeout time.Duration, opts ...wsrpc.DialOption) (*wsrpc.ClientConn, error) {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	t.Cleanup(cancel)
 
-	return wsrpc.DialWithContext(ctx, targetURI, opts...)
+	opts = append(opts, wsrpc.WithLogger(logger.Test(t)))
+
+	return wsrpc.DialWithContext(ctx, cancel, targetURI, opts...)
 }
 
-// setupServer is a convenience method to set up a server for most testing
+// SetupServer is a convenience method to set up a server for most testing
 // usecases.
-func setupServer(t *testing.T, opts ...wsrpc.ServerOption) (net.Listener, *wsrpc.Server) {
+func SetupServer(t *testing.T, opts ...wsrpc.ServerOption) (net.Listener, *wsrpc.Server) {
 	// Attempt to reconnect to the port which the OS may not have had time
 	// to clean up between tests.
 	var (
@@ -103,80 +106,75 @@ func setupServer(t *testing.T, opts ...wsrpc.ServerOption) (net.Listener, *wsrpc
 	return lis, wsrpc.NewServer(opts...)
 }
 
-type echoReq struct {
-	// Sets the timeout on the request context. Defaults to no timeout
-	timeout time.Duration
+type EchoReq struct {
+	// Sets the Timeout on the request context. Defaults to no Timeout
+	Timeout time.Duration
 	// Insert the client connection's public key into the context. This is
 	// required for server to client calls, but optional for client to server
 	// calls
-	pubKey *credentials.StaticSizedPublicKey
-	// The message that will be sent in the request
-	message *pb.EchoRequest
+	PubKey *credentials.StaticSizedPublicKey
+	// The Message that will be sent in the request
+	Message *pb.EchoRequest
 }
 
-func processEchos(t *testing.T,
+func ProcessEchos(t *testing.T,
 	c pb.EchoClient,
-	reqs []echoReq,
+	reqs []EchoReq,
 	ch chan<- *pb.EchoResponse,
 ) {
-	t.Helper()
-
 	wg := sync.WaitGroup{}
 	for _, req := range reqs {
 		wg.Add(1)
-		go func(req echoReq) {
-			wg.Done()
+		go func(req EchoReq) {
+			defer wg.Done()
 
 			ctx := context.Background()
-			if req.timeout > 0 {
-				tctx, cancel := context.WithTimeout(context.Background(), req.timeout)
+			if req.Timeout > 0 {
+				tctx, cancel := context.WithTimeout(context.Background(), req.Timeout)
 				defer cancel()
 
 				ctx = tctx
 			}
 
-			if req.pubKey != nil {
-				ctx = peer.NewCallContext(ctx, *req.pubKey)
+			if req.PubKey != nil {
+				ctx = peer.NewCallContext(ctx, *req.PubKey)
 			}
 
-			resp, err := c.Echo(ctx, req.message)
+			resp, err := c.Echo(ctx, req.Message)
 			require.NoError(t, err)
 
 			ch <- resp
 		}(req)
-
-		wg.Wait()
 	}
+	wg.Wait()
+	close(ch)
 }
 
-func waitForResponses(t *testing.T, ch <-chan *pb.EchoResponse, limit int) []*pb.EchoResponse {
-	// Stores the calls in the order they were received. Call 1 should arrive second
-	// because of the delayed response.
+func WaitForResponses(t *testing.T, ch <-chan *pb.EchoResponse, limit int) []*pb.EchoResponse {
+	// Stores the calls in the order they were received.
+
 	resps := []*pb.EchoResponse{}
 	i := 0
-loop:
-	for {
-		if i == limit {
-			break
-		}
+	timer := time.After(5 * time.Second)
 
+loop:
+	for i < limit {
 		select {
 		case resp := <-ch:
 			resps = append(resps, resp)
-		case <-time.After(3 * time.Second):
+			i++
+		case <-timer:
 			break loop
 		}
-
-		i++
 	}
-
-	require.Len(t, resps, 2)
 
 	return resps
 }
 
-func waitForReadyConnection(t *testing.T, conn *wsrpc.ClientConn) {
+func WaitForReadyConnection(t *testing.T, conn *wsrpc.ClientConn) {
 	t.Helper()
+
+	require.Equal(t, false, conn.GetState() == connectivity.Shutdown)
 
 	require.Eventually(t, func() bool {
 		return conn.GetState() == connectivity.Ready

@@ -1,4 +1,4 @@
-package intgtest
+package bi_test
 
 import (
 	"context"
@@ -13,19 +13,20 @@ import (
 	"github.com/smartcontractkit/wsrpc"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
 	"github.com/smartcontractkit/wsrpc/peer"
+	"github.com/smartcontractkit/wsrpc/intgtest/utils"
 )
 
 func Test_Bidirectional_ConcurrentCalls(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	// Start serving
 	go s.Serve(lis)
@@ -33,7 +34,7 @@ func Test_Bidirectional_ConcurrentCalls(t *testing.T) {
 	sClient := pb.NewEchoClient(s)
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)
@@ -42,7 +43,7 @@ func Test_Bidirectional_ConcurrentCalls(t *testing.T) {
 
 	cClient := pb.NewEchoClient(conn)
 	// Register the handlers on the wsrpc client
-	pb.RegisterEchoServer(conn, &echoServer{})
+	pb.RegisterEchoServer(conn, &utils.EchoServer{})
 
 	// Make a client to server call
 	resp, err := cClient.Echo(context.Background(), &pb.EchoRequest{
@@ -71,16 +72,16 @@ func Test_Bidirectional_ConcurrentCalls(t *testing.T) {
 // 2. Client makes a call back to the server in the handler
 // 3. Server returns the response from the client as the echo
 func Test_Bidirectional_MultiplexCalls(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 
 	// Start serving
 	go s.Serve(lis)
@@ -88,7 +89,7 @@ func Test_Bidirectional_MultiplexCalls(t *testing.T) {
 	sClient := pb.NewEchoClient(s)
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)

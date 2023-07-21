@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -154,18 +155,22 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 		close(done)
 	}
 
-	// Initialize the transport
-	tr, err := transport.NewServerTransport(conn, config, onClose)
-	if err != nil {
+
+	s.mu.RLock()
+	if nil == s.connMgr {
+		s.mu.RUnlock()
 		return
 	}
+	time.Sleep(10 * time.Millisecond)
+	s.serveWG.Add(1)
+	
+
+	// Initialize the transport
+	tr := transport.NewServerTransport(conn, config, onClose)
 
 	// Register the transport against the public key
-	s.mu.RLock()
 	s.connMgr.registerConnection(pubKey, tr)
 	s.mu.RUnlock()
-
-	s.serveWG.Add(1)
 
 	// Start the reader handler
 	go s.handleRead(pubKey, done)
@@ -195,6 +200,10 @@ func (s *Server) sendMsg(ctx context.Context, pub [32]byte, msg []byte) error {
 // readFn handler.
 func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan struct{}) {
 	s.mu.RLock()
+	if nil == s.connMgr {
+		s.mu.RUnlock()
+		return
+	}
 	tr, err := s.connMgr.getTransport(pubKey)
 	s.mu.RUnlock()
 	if err != nil {

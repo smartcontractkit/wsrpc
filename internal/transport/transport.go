@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/logger"
 )
@@ -40,13 +41,16 @@ type ClientTransport interface {
 
 	// Close tears down this transport. Once it returns, the transport
 	// should not be accessed any more.
-	Close() error
+	Close()
+
+	// Start starts this transport. 
+	Start()
 }
 
 // NewClientTransport establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func NewClientTransport(ctx context.Context, lggr logger.Logger, addr string, opts ConnectOptions, onClose func()) (ClientTransport, error) {
-	return newWebsocketClient(ctx, lggr, addr, opts, onClose)
+func NewClientTransport(ctx context.Context, lggr logger.Logger, addr string, opts ConnectOptions, onClose func(), getState func() connectivity.State) (ClientTransport, error) {
+	return newWebsocketClient(ctx, lggr, addr, opts, onClose, getState)
 }
 
 // state of transport.
@@ -82,8 +86,8 @@ type ServerTransport interface {
 
 // NewServerTransport creates a ServerTransport with conn or non-nil error
 // if it fails.
-func NewServerTransport(c *websocket.Conn, config *ServerConfig, onClose func()) (ServerTransport, error) {
-	return newWebsocketServer(c, config, onClose), nil
+func NewServerTransport(c *websocket.Conn, config *ServerConfig, onClose func()) ServerTransport {
+	return newWebsocketServer(c, config, onClose)
 }
 
 func handlePong(conn *websocket.Conn) func(string) error {

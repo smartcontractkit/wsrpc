@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/logger"
 )
 
@@ -23,6 +25,11 @@ type WebsocketClient struct {
 	// Callback function called when the transport is closed
 	onClose func()
 
+	// Callback function allows WebsocketClient to check connectivity state
+	getState func() connectivity.State
+
+	wg *sync.WaitGroup
+
 	// Communication channels
 	write chan []byte
 	read  chan []byte
@@ -37,7 +44,7 @@ type WebsocketClient struct {
 
 // newWebsocketClient establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, onClose func()) (_ *WebsocketClient, err error) {
+func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, onClose func(), getState func() connectivity.State) (*WebsocketClient, error) {
 	writeTimeout := defaultWriteTimeout
 	if opts.WriteTimeout != 0 {
 		writeTimeout = opts.WriteTimeout
@@ -59,15 +66,17 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 		writeTimeout: writeTimeout,
 		conn:         conn,
 		onClose:      onClose,
-		write:        make(chan []byte), // Should this be buffered?
-		read:         make(chan []byte), // Should this be buffered?
+		getState:     getState,
+		wg:			  &sync.WaitGroup{},
+		write:        make(chan []byte),
+		read:         make(chan []byte),
 		done:         make(chan struct{}),
 		interrupt:    make(chan struct{}),
 		log:          log,
 	}
 
-	// Start go routines to establish the read/write channels
-	go c.start()
+	// // Start go routines to establish the read/write channels
+	c.Start()
 
 	return c, nil
 }
@@ -92,20 +101,22 @@ func (c *WebsocketClient) Write(ctx context.Context, msg []byte) error {
 }
 
 // Close closes the websocket connection and cleans up pump goroutines.
-func (c *WebsocketClient) Close() error {
+func (c *WebsocketClient) Close() {
 	close(c.interrupt)
 
-	return nil
+	c.wg.Wait()
 }
 
 // start run readPump in a goroutine and waits on writePump.
-func (c WebsocketClient) start() {
-	defer c.onClose()
+func (c WebsocketClient) Start() {
+	//defer c.onClose()
 
 	// Set up reader
+	c.wg.Add(1)
 	go c.readPump()
 
-	c.writePump()
+	c.wg.Add(1)
+	go c.writePump()
 }
 
 // readPump pumps messages from the websocket connection. When a websocket
@@ -116,21 +127,37 @@ func (c WebsocketClient) start() {
 // that there is at most one reader on a connection by executing all reads from
 // this goroutine.
 func (c *WebsocketClient) readPump() {
-	defer close(c.done)
-
+	defer func() {
+		close(c.done)
+		c.wg.Done()
+	}()
+	
 	//nolint:errcheck
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(handlePong(c.conn))
 
 	for {
-		_, msg, err := c.conn.ReadMessage()
-		if err != nil {
-			c.log.Errorw("[wsrpc] Read error", "err", err)
-
+		select {
+		case <- c.interrupt:
 			return
-		}
+		default:
+			_, msg, err := c.conn.ReadMessage()
+			
+			// state := c.getState()
 
-		c.read <- msg
+			// if connectivity.Shutdown == state {
+			// 	// prevents logging data race below
+			// 	return
+			// }
+			
+			if err != nil {
+				c.log.Errorw("[wsrpc] Read error", "err", err)
+
+				return
+			}
+
+			c.read <- msg
+		}
 	}
 }
 
@@ -141,7 +168,11 @@ func (c *WebsocketClient) readPump() {
 // from this goroutine.
 func (c *WebsocketClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
-	defer ticker.Stop()
+	defer func() {
+		ticker.Stop()
+		c.onClose()
+		c.wg.Done()
+	}()
 
 	for {
 		select {

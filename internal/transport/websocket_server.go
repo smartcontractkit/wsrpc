@@ -122,16 +122,22 @@ func (s *WebsocketServer) readPump() {
 	s.conn.SetPongHandler(handlePong(s.conn))
 
 	for {
-		_, msg, err := s.conn.ReadMessage()
-		// An error is provided when the websocket connection is closed,
-		// allowing us to clean up the goroutine.
-		if err != nil {
-			log.Println("[wsrpc] Read error: ", err)
+		select {
+		case <-s.interrupt:
+			// Interrupt channel has been closed, return from the function
+			log.Println("[wsrpc] Interrupt signal received, stopping readPump.")
+			return
+		default:
+			_, msg, err := s.conn.ReadMessage()
+			// An error is provided when the websocket connection is closed,
+			// allowing us to clean up the goroutine.
+			if err != nil {
+				log.Println("[wsrpc] Read error: ", err)
+				return
+			}
 
-			break
+			s.read <- msg
 		}
-
-		s.read <- msg
 	}
 }
 

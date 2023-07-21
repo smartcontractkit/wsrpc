@@ -31,7 +31,7 @@ func main() {
 	ctx := context.Background()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	conn, err := wsrpc.DialWithContext(ctx, "127.0.0.1:1338",
+	conn, err := wsrpc.DialWithContext(ctx, cancel, "127.0.0.1:1338",
 		wsrpc.WithTransportCreds(privKey, serverPubKey),
 		wsrpc.WithBlock(),
 	)
