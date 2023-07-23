@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/logger"
 )
 
@@ -24,9 +23,6 @@ type WebsocketClient struct {
 
 	// Callback function called when the transport is closed
 	onClose func()
-
-	// Callback function allows WebsocketClient to check connectivity state
-	getState func() connectivity.State
 
 	wg *sync.WaitGroup
 
@@ -44,7 +40,7 @@ type WebsocketClient struct {
 
 // newWebsocketClient establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, onClose func(), getState func() connectivity.State) (*WebsocketClient, error) {
+func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, onClose func()) (*WebsocketClient, error) {
 	writeTimeout := defaultWriteTimeout
 	if opts.WriteTimeout != 0 {
 		writeTimeout = opts.WriteTimeout
@@ -66,8 +62,7 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 		writeTimeout: writeTimeout,
 		conn:         conn,
 		onClose:      onClose,
-		getState:     getState,
-		wg:			  &sync.WaitGroup{},
+		wg:           &sync.WaitGroup{},
 		write:        make(chan []byte),
 		read:         make(chan []byte),
 		done:         make(chan struct{}),
@@ -75,7 +70,7 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 		log:          log,
 	}
 
-	// // Start go routines to establish the read/write channels
+	// Start go routines to establish the read/write channels
 	c.Start()
 
 	return c, nil
@@ -109,8 +104,6 @@ func (c *WebsocketClient) Close() {
 
 // start run readPump in a goroutine and waits on writePump.
 func (c WebsocketClient) Start() {
-	//defer c.onClose()
-
 	// Set up reader
 	c.wg.Add(1)
 	go c.readPump()
@@ -131,25 +124,18 @@ func (c *WebsocketClient) readPump() {
 		close(c.done)
 		c.wg.Done()
 	}()
-	
+
 	//nolint:errcheck
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(handlePong(c.conn))
 
 	for {
 		select {
-		case <- c.interrupt:
+		case <-c.interrupt:
 			return
 		default:
 			_, msg, err := c.conn.ReadMessage()
-			
-			// state := c.getState()
 
-			// if connectivity.Shutdown == state {
-			// 	// prevents logging data race below
-			// 	return
-			// }
-			
 			if err != nil {
 				c.log.Errorw("[wsrpc] Read error", "err", err)
 

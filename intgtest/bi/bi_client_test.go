@@ -12,8 +12,8 @@ import (
 
 	"github.com/smartcontractkit/wsrpc"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
-	"github.com/smartcontractkit/wsrpc/peer"
 	"github.com/smartcontractkit/wsrpc/intgtest/utils"
+	"github.com/smartcontractkit/wsrpc/peer"
 )
 
 func Test_Bidirectional_ConcurrentCalls(t *testing.T) {

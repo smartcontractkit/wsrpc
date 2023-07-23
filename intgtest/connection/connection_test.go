@@ -187,7 +187,6 @@ func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(conn.Close)
 
-	// TODO problematic line
 	utils.WaitForReadyConnection(t, conn)
 
 	connectedKeys := s.GetConnectedPeerPublicKeys()

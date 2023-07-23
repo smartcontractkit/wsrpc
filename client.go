@@ -161,9 +161,8 @@ func (cc *ClientConn) newAddrConn(addr string) *addrConn {
 		state:   connectivity.Idle,
 		wg:      &sync.WaitGroup{},
 		stateCh: csCh,
-		//cc:      cc,
-		addr:  addr,
-		dopts: cc.dopts,
+		addr:    addr,
+		dopts:   cc.dopts,
 	}
 	ac.ctx, ac.cancel = context.WithCancel(cc.ctx)
 	cc.mu.Lock()
@@ -371,7 +370,6 @@ func (cc *ClientConn) Close() {
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 
-	// TODO: put behind API
 	cc.mu.RLock()
 	cc.addrConn.mu.RLock()
 	state := cc.addrConn.state
@@ -399,7 +397,6 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	cc.mu.Unlock()
 
 	// Remove the method call once invoke has been completed.
-	// TODO: more efficient to keep until client close or TTL (TTL for threat vectors)?
 	defer func() {
 		cc.mu.Lock()
 		cc.removeMethodCall(callID)
@@ -465,7 +462,6 @@ type addrConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     *sync.WaitGroup
-	//cc *ClientConn
 
 	addr  string
 	dopts dialOptions
@@ -573,7 +569,6 @@ func (ac *addrConn) resetTransport() {
 		ac.mu.Lock()
 		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
-			//newTr.Close() //uncessary cancellation signal?
 			return
 		}
 		ac.transport = newTr
@@ -616,15 +611,7 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 		reconnect.Fire()
 	}
 
-	// todo: remove. no longer sycronizing on state
-	getState := func() connectivity.State {
-		ac.mu.Lock()
-		defer ac.mu.Unlock()
-
-		return ac.state
-	}
-
-	tr, err := transport.NewClientTransport(ac.ctx, ac.dopts.logger, addr, copts, onClose, getState)
+	tr, err := transport.NewClientTransport(ac.ctx, ac.dopts.logger, addr, copts, onClose)
 
 	return tr, reconnect, err
 }
@@ -644,10 +631,11 @@ func (ac *addrConn) teardown() {
 	curTr := ac.transport
 	ac.transport = nil
 
-	ac.cancel() // is this necessary?
+	ac.cancel()
 	ac.mu.Unlock()
 	if curTr != nil {
-		curTr.Close() //syncronously closes lower level
+		//syncronously closes lower level
+		curTr.Close()
 	}
 
 	ac.wg.Wait()

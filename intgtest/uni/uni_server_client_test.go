@@ -88,7 +88,7 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 	pk := keypairs.Client1.StaticallySizedPublicKey(t)
 	reqs := []utils.EchoReq{
 		{Message: &pb.EchoRequest{Body: "call1", DelayMs: 500}, PubKey: &pk},
-		{Message: &pb.EchoRequest{Body: "call2"}, Timeout: 200000 * time.Millisecond, PubKey: &pk},
+		{Message: &pb.EchoRequest{Body: "call2"}, Timeout: 2000 * time.Millisecond, PubKey: &pk},
 	}
 
 	go func() {
