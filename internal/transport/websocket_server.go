@@ -16,8 +16,11 @@ type WebsocketServer struct {
 	// config
 	writeTimeout time.Duration
 
+	// config: max bytes in a message request
+	readLimit int64
+
 	// Underlying communication channel
-	conn *websocket.Conn
+	conn WebSocketConn
 
 	// The current state of the server transport
 	state transportState
@@ -36,14 +39,28 @@ type WebsocketServer struct {
 }
 
 // newWebsocketServer server upgrades an HTTP connection to a websocket connection.
-func newWebsocketServer(c *websocket.Conn, config *ServerConfig, afterWritePump func()) *WebsocketServer {
+func newWebsocketServer(c WebSocketConn, config *ServerConfig, afterWritePump func()) *WebsocketServer {
+	s := newWebsocketServerWithConfig(c, config, afterWritePump)
+
+	go s.start()
+
+	return s
+}
+
+func newWebsocketServerWithConfig(c WebSocketConn, config *ServerConfig, afterWritePump func()) *WebsocketServer {
 	writeTimeout := defaultWriteTimeout
 	if config.WriteTimeout != 0 {
 		writeTimeout = config.WriteTimeout
 	}
 
+	readLimit := defaultReadLimit
+	if config.ReadLimit != 0 {
+		readLimit = config.ReadLimit
+	}
+
 	s := &WebsocketServer{
 		writeTimeout:   writeTimeout,
+		readLimit:      readLimit,
 		conn:           c,
 		afterWritePump: afterWritePump,
 		write:          make(chan []byte),
@@ -51,9 +68,7 @@ func newWebsocketServer(c *websocket.Conn, config *ServerConfig, afterWritePump 
 		closeWritePump: make(chan struct{}),
 		closeConn:      make(chan struct{}),
 	}
-
-	go s.start()
-
+	s.conn.SetReadLimit(readLimit)
 	return s
 }
 

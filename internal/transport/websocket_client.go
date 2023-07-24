@@ -19,7 +19,7 @@ type WebsocketClient struct {
 	writeTimeout time.Duration
 
 	// Underlying communication channel
-	conn *websocket.Conn
+	conn WebSocketConn
 
 	// Callback function called when the transport is closed
 	afterWritePump func()
@@ -46,6 +46,11 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 		writeTimeout = opts.WriteTimeout
 	}
 
+	readLimit := defaultReadLimit
+	if opts.ReadLimit != 0 {
+		readLimit = opts.ReadLimit
+	}
+
 	d := websocket.Dialer{
 		TLSClientConfig:  opts.TransportCredentials.Config,
 		HandshakeTimeout: 45 * time.Second,
@@ -56,6 +61,8 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 	if err != nil {
 		return nil, fmt.Errorf("[wsrpc] error while dialing %w", err)
 	}
+
+	conn.SetReadLimit(readLimit)
 
 	c := &WebsocketClient{
 		ctx:            ctx,

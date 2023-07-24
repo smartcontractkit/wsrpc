@@ -14,13 +14,22 @@ import (
 )
 
 func Test_NewClientTLSConfig(t *testing.T) {
-	_, cpriv, err := ed25519.GenerateKey(nil)
+	_, ed25519cpriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	spub, spriv, err := ed25519.GenerateKey(nil)
+	spub, ed25519spriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	tlsCfg, err := NewClientTLSConfig(cpriv, NewPublicKeys(spub))
+	cpriv, err := ValidPrivateKeyFromEd25519(ed25519cpriv)
+	require.NoError(t, err)
+
+	spriv, err := ValidPrivateKeyFromEd25519(ed25519spriv)
+	require.NoError(t, err)
+
+	spubs, err := ValidPublicKeysFromEd25519(spub)
+	require.NoError(t, err)
+
+	tlsCfg, err := NewClientTLSConfig(cpriv, spubs)
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
 
@@ -36,7 +45,10 @@ func Test_NewClientTLSConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test an invalid client certificate
-	_, invspriv, err := ed25519.GenerateKey(nil)
+	_, ed25519invspriv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	invspriv, err := ValidPrivateKeyFromEd25519(ed25519invspriv)
 	require.NoError(t, err)
 
 	invscert, err := newMinimalX509Cert(invspriv)
@@ -47,13 +59,22 @@ func Test_NewClientTLSConfig(t *testing.T) {
 }
 
 func Test_NewServerTLSConfig(t *testing.T) {
-	_, spriv, err := ed25519.GenerateKey(nil)
+	_, ed25519spriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	cpub, cpriv, err := ed25519.GenerateKey(nil)
+	cpub, ed25519cpriv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
-	tlsCfg, err := NewServerTLSConfig(spriv, NewPublicKeys(cpub))
+	spriv, err := ValidPrivateKeyFromEd25519(ed25519spriv)
+	require.NoError(t, err)
+
+	cpriv, err := ValidPrivateKeyFromEd25519(ed25519cpriv)
+	require.NoError(t, err)
+
+	cpubs, err := ValidPublicKeysFromEd25519(cpub)
+	require.NoError(t, err)
+
+	tlsCfg, err := NewServerTLSConfig(spriv, cpubs)
 	require.NoError(t, err)
 	require.Len(t, tlsCfg.Certificates, 1)
 
@@ -70,7 +91,10 @@ func Test_NewServerTLSConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test an invalid client certificate
-	_, invcpriv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42))) //nolint:gosec
+	_, ed25519invcpriv, err := ed25519.GenerateKey(rand.New(rand.NewSource(42))) //nolint:gosec
+	require.NoError(t, err)
+
+	invcpriv, err := ValidPrivateKeyFromEd25519(ed25519invcpriv)
 	require.NoError(t, err)
 
 	invccert, err := newMinimalX509Cert(invcpriv)
@@ -114,4 +138,52 @@ func Test_PubKeyFromCert_MustBeEd25519KeyError(t *testing.T) {
 
 	_, err = PubKeyFromCert(cert)
 	require.EqualError(t, err, "requires an ed25519 public key")
+}
+
+func Test_IsValidPublicKey(t *testing.T) {
+	t.Run("pub_key_included", func(t *testing.T) {
+		cpub, _, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+
+		pk, err := ValidPublicKeysFromEd25519(cpub)
+		require.NoError(t, err)
+
+		require.True(t, pk.isValidPublicKey(cpub))
+	})
+
+	t.Run("pub_key_not_included", func(t *testing.T) {
+		cpub, _, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+
+		cpub2, _, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+
+		pk, err := ValidPublicKeysFromEd25519(cpub)
+		require.NoError(t, err)
+
+		// Test
+		require.False(t, pk.isValidPublicKey(cpub2))
+	})
+}
+
+func Test_NewPublicKeys(t *testing.T) {
+	t.Run("key_length_32", func(t *testing.T) {
+		cpub, _, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
+
+		_, err = ValidPublicKeysFromEd25519(cpub)
+		require.NoError(t, err)
+	})
+
+	t.Run("key_length_not_32", func(t *testing.T) {
+		shortKey := make([]byte, ed25519.PublicKeySize-1)
+
+		_, err := ValidPublicKeysFromEd25519(shortKey)
+		require.Error(t, err)
+
+		longKey := make([]byte, ed25519.PublicKeySize+1)
+
+		_, err = ValidPublicKeysFromEd25519(longKey)
+		require.Error(t, err)
+	})
 }

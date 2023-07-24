@@ -45,7 +45,19 @@ func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
 // level security credentials (e.g., TLS/SSL).
 func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
-		pubs := credentials.NewPublicKeys(serverPubKey)
+		privKey, err := credentials.ValidPrivateKeyFromEd25519(privKey)
+		if err != nil {
+			log.Println(err)
+
+			return
+		}
+
+		pubs, err := credentials.ValidPublicKeysFromEd25519(serverPubKey)
+		if err != nil {
+			log.Println(err)
+
+			return
+		}
 
 		// Generate the TLS config for the client
 		config, err := credentials.NewClientTLSConfig(privKey, pubs)
@@ -73,6 +85,12 @@ func WithBlock() DialOption {
 func WithWriteTimeout(d time.Duration) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.copts.WriteTimeout = d
+	})
+}
+
+func WithReadLimit(size int64) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.copts.ReadLimit = size
 	})
 }
 

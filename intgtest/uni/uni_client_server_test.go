@@ -20,7 +20,7 @@ func Test_ClientServer_SimpleCall(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
@@ -56,7 +56,7 @@ func Test_ClientServer_ConcurrentCalls(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the echo server implementation with the wsrpc server

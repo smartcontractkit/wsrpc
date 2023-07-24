@@ -44,7 +44,7 @@ func main() {
 		log.Fatalf("[MAIN] failed to listen: %v", err)
 	}
 	s := wsrpc.NewServer(
-		wsrpc.Creds(privKey, pubKeys),
+		wsrpc.WithCreds(privKey, pubKeys),
 		wsrpc.WithHealthcheck("127.0.0.1:1337"),
 	)
 
