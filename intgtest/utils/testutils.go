@@ -78,13 +78,12 @@ func GenerateKeys(t *testing.T) keys {
 // SetupClientConn is a convenience method to setup a client connection for most
 // testing usecases.
 func SetupClientConn(t *testing.T, timeout time.Duration, opts ...wsrpc.DialOption) (*wsrpc.ClientConn, error) {
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	t.Cleanup(cancel)
 
 	opts = append(opts, wsrpc.WithLogger(logger.Test(t)))
 
-	return wsrpc.DialWithContext(ctx, cancel, targetURI, opts...)
+	return wsrpc.DialWithContext(ctx, targetURI, opts...)
 }
 
 // SetupServer is a convenience method to set up a server for most testing

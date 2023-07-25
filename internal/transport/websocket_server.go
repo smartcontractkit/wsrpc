@@ -115,29 +115,25 @@ func (s *WebsocketServer) start() {
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
-	defer close(s.done)
+	defer func() {
+		close(s.done)
+		s.conn.Close()
+	}()
 
 	//nolint:errcheck
 	s.conn.SetReadDeadline(time.Now().Add(pongWait))
 	s.conn.SetPongHandler(handlePong(s.conn))
 
 	for {
-		select {
-		case <-s.interrupt:
-			// Interrupt channel has been closed, return from the function
-			log.Println("[wsrpc] Interrupt signal received, stopping readPump.")
+		_, msg, err := s.conn.ReadMessage()
+		// An error is provided when the websocket connection is closed,
+		// allowing us to clean up the goroutine.
+		if err != nil {
+			log.Println("[wsrpc] Read error: ", err)
 			return
-		default:
-			_, msg, err := s.conn.ReadMessage()
-			// An error is provided when the websocket connection is closed,
-			// allowing us to clean up the goroutine.
-			if err != nil {
-				log.Println("[wsrpc] Read error: ", err)
-				return
-			}
-
-			s.read <- msg
 		}
+
+		s.read <- msg
 	}
 }
 

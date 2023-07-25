@@ -59,15 +59,17 @@ type ClientConn struct {
 }
 
 func Dial(target string, opts ...DialOption) (*ClientConn, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	return DialWithContext(ctx, cancel, target, opts...)
+	ctx := context.Background()
+	return DialWithContext(ctx, target, opts...)
 }
 
 // Dial creates a client connection to the given target. By default, it's
 // a non-blocking dial (the function won't wait for connections to be
 // established, and connecting happens in the background). To make it a blocking
 // dial, use WithBlock() dial option.
-func DialWithContext(ctx context.Context, cancel context.CancelFunc, target string, opts ...DialOption) (*ClientConn, error) {
+func DialWithContext(ctxCaller context.Context, target string, opts ...DialOption) (*ClientConn, error) {
+	ctx, cancel := context.WithCancel(ctxCaller)
+
 	cc := &ClientConn{
 		ctx:         ctx,
 		cancel:      cancel,
@@ -189,8 +191,7 @@ func (cc *ClientConn) listenForConnectivityChange() {
 		select {
 		case <-cc.ctx.Done():
 			return
-		default:
-			s := <-cc.csCh
+		case s := <-cc.csCh:
 			cc.csMgr.updateState(s)
 		}
 	}
@@ -206,10 +207,7 @@ func (cc *ClientConn) listenForRead() {
 		select {
 		case <-cc.ctx.Done():
 			return
-		default:
-			notifyChan := cc.csMgr.getNotifyChan()
-			<-notifyChan
-
+		case <-cc.csMgr.getNotifyChan():
 			s := cc.csMgr.getState()
 
 			if s == connectivity.Ready {
@@ -513,7 +511,13 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State) {
 		return
 	}
 	ac.state = s
-	ac.stateCh <- s
+	select {
+	case ac.stateCh <- s:
+		return
+	case <-ac.ctx.Done():
+		return
+	}
+
 }
 
 // resetTransport attempts to connect to the server. If the connection fails,
@@ -626,12 +630,11 @@ func (ac *addrConn) teardown() {
 		return
 	}
 
-	ac.updateConnectivityState(connectivity.Shutdown)
-
 	curTr := ac.transport
 	ac.transport = nil
 
 	ac.cancel()
+	ac.updateConnectivityState(connectivity.Shutdown)
 	ac.mu.Unlock()
 	if curTr != nil {
 		//syncronously closes lower level
@@ -661,8 +664,9 @@ func (csm *connectivityStateManager) updateState(state connectivity.State) {
 	csm.state = state
 	if csm.notifyChan != nil {
 		// There are other goroutines waiting on this channel.
-		close(csm.notifyChan)
+		notifyChan := csm.notifyChan
 		csm.notifyChan = nil
+		close(notifyChan)
 	}
 }
 

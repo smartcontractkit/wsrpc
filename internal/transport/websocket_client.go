@@ -24,7 +24,7 @@ type WebsocketClient struct {
 	// Callback function called when the transport is closed
 	onClose func()
 
-	wg *sync.WaitGroup
+	wg sync.WaitGroup
 
 	// Communication channels
 	write chan []byte
@@ -62,7 +62,6 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 		writeTimeout: writeTimeout,
 		conn:         conn,
 		onClose:      onClose,
-		wg:           &sync.WaitGroup{},
 		write:        make(chan []byte),
 		read:         make(chan []byte),
 		done:         make(chan struct{}),
@@ -103,7 +102,7 @@ func (c *WebsocketClient) Close() {
 }
 
 // start run readPump in a goroutine and waits on writePump.
-func (c WebsocketClient) Start() {
+func (c *WebsocketClient) Start() {
 	// Set up reader
 	c.wg.Add(1)
 	go c.readPump()
