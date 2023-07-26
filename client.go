@@ -280,7 +280,7 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 		cc.conn.mu.RUnlock()
 		cc.mu.RUnlock()
 
-		if err := tr.Write(replyMsg); err != nil {
+		if err := tr.Write(ctx, replyMsg); err != nil {
 			cc.dopts.logger.Errorf("error writing to transport: %s", err)
 		}
 	}
@@ -376,7 +376,7 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	cc.conn.mu.RUnlock()
 	cc.mu.RUnlock()
 
-	if err := tr.Write(reqB); err != nil {
+	if err := tr.Write(ctx, reqB); err != nil {
 		return err
 	}
 

@@ -36,7 +36,7 @@ type ClientTransport interface {
 	Read() <-chan []byte
 
 	// Write sends a message to the stream.
-	Write(msg []byte) error
+	Write(ctx context.Context, msg []byte) error
 
 	// Close tears down this transport. Once it returns, the transport
 	// should not be accessed any more.
@@ -73,7 +73,7 @@ type ServerTransport interface {
 	Read() <-chan []byte
 
 	// Write sends a message to the stream.
-	Write(msg []byte) error
+	Write(ctx context.Context, msg []byte) error
 
 	// Close tears down the transport. Once it is called, the transport
 	// should not be accessed any more.

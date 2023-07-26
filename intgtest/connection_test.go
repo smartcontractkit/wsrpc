@@ -11,6 +11,7 @@ import (
 
 	"github.com/smartcontractkit/wsrpc"
 	"github.com/smartcontractkit/wsrpc/connectivity"
+	"github.com/smartcontractkit/wsrpc/credentials"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
 )
 
@@ -158,4 +159,74 @@ func Test_InvalidCredentials(t *testing.T) {
 	s.UpdatePublicKeys([]ed25519.PublicKey{keypairs.Client1.PubKey})
 
 	waitForReadyConnection(t, conn)
+}
+
+func Test_GetConnectedPeerPublicKeys(t *testing.T) {
+	keypairs := generateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
+
+	// Start the server
+	lis, s := setupServer(t,
+		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+	)
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterEchoServer(s, &echoServer{})
+
+	// Start serving
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+
+	require.Empty(t, s.GetConnectedPeerPublicKeys())
+
+	// Start client
+	conn, err := setupClientConn(t, 100*time.Millisecond,
+		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
+	)
+	require.NoError(t, err)
+	t.Cleanup(conn.Close)
+
+	waitForReadyConnection(t, conn)
+
+	connectedKeys := s.GetConnectedPeerPublicKeys()
+	require.Len(t, s.GetConnectedPeerPublicKeys(), 1)
+	actualKey, err := credentials.ToStaticallySizedPublicKey(keypairs.Client1.PubKey)
+	require.NoError(t, err)
+	require.Equal(t, actualKey, connectedKeys[0])
+}
+
+func Test_GetNotificationChan(t *testing.T) {
+	keypairs := generateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
+
+	// Start the server
+	lis, s := setupServer(t,
+		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+	)
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterEchoServer(s, &echoServer{})
+
+	// Start serving
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+
+	notifyChan := s.GetConnectionNotifyChan()
+
+	// Start client
+	conn, err := setupClientConn(t, 100*time.Millisecond,
+		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
+	)
+	require.NoError(t, err)
+	t.Cleanup(conn.Close)
+
+	waitForReadyConnection(t, conn)
+
+	// Wait for connection notification
+	select {
+	case <-notifyChan:
+		t.Log("received notification")
+	case <-time.After(3 * time.Second):
+		assert.Fail(t, "did not notify")
+	}
 }

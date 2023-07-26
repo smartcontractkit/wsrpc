@@ -2,6 +2,7 @@ package wsrpc
 
 import (
 	"crypto/ed25519"
+	"time"
 
 	"github.com/smartcontractkit/wsrpc/credentials"
 )
@@ -21,6 +22,12 @@ type serverOptions struct {
 
 	// The address that the healthcheck will run on
 	healthcheckAddr string
+
+	// The HTTP ReadTimeout the healthcheck will use. Set to 0 for no timeout
+	healthcheckTimeout time.Duration
+
+	// The HTTP ReadTimeout the ws server will use. Set to 0 for no timeout
+	wsTimeout time.Duration
 }
 
 // funcServerOption wraps a function that modifies serverOptions into an
@@ -37,6 +44,14 @@ func newFuncServerOption(f func(*serverOptions)) *funcServerOption {
 
 func (fdo *funcServerOption) apply(do *serverOptions) {
 	fdo.f(do)
+}
+
+// returns a ServerOption that sets the healthcheck HTTP read timeout and the server HTTP read timeout
+func WithHTTPReadTimeout(hctime time.Duration, wstime time.Duration) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.healthcheckTimeout = hctime
+		o.wsTimeout = wstime
+	})
 }
 
 // Creds returns a ServerOption that sets credentials for server connections.
@@ -70,8 +85,10 @@ func ReadBufferSize(s int) ServerOption {
 }
 
 var defaultServerOptions = serverOptions{
-	writeBufferSize: 4096,
-	readBufferSize:  4096,
+	writeBufferSize:    4096,
+	readBufferSize:     4096,
+	healthcheckTimeout: 5 * time.Second,
+	wsTimeout:          10 * time.Second,
 }
 
 // WithHealthcheck specifies whether to run a healthcheck endpoint. If a url
