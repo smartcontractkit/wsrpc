@@ -290,12 +290,12 @@ func (s *Server) handleMessageResponse(pubKey credentials.StaticSizedPublicKey, 
 func (s *Server) validateMessageRequest(r *message.Request) error {
 	methodName := r.GetMethod()
 	if _, ok := s.service.methods[methodName]; !ok {
-		return fmt.Errorf("invalid method: %v", methodName)
+		return fmt.Errorf("unrecognized method: %v", methodName)
 	}
 
 	callId := r.GetCallId()
 	if id, err := uuid.Parse(callId); err != nil || id.Version() != 4 {
-		return fmt.Errorf("invalid callId: %v", callId)
+		return fmt.Errorf("invalid callId %s: %w", callId, err)
 	}
 
 	return nil

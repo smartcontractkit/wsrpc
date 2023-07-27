@@ -34,7 +34,7 @@ func Test_Bidirectional_ConcurrentCalls(t *testing.T) {
 	sClient := pb.NewEchoClient(s)
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)
@@ -89,7 +89,7 @@ func Test_Bidirectional_MultiplexCalls(t *testing.T) {
 	sClient := pb.NewEchoClient(s)
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)

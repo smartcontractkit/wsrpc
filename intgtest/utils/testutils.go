@@ -75,9 +75,9 @@ func GenerateKeys(t *testing.T) keys {
 	}
 }
 
-// SetupClientConn is a convenience method to setup a client connection for most
+// SetupClientConnWithOptsAndTimeout is a convenience method to setup a client connection for most
 // testing usecases.
-func SetupClientConn(t *testing.T, timeout time.Duration, opts ...wsrpc.DialOption) (*wsrpc.ClientConn, error) {
+func SetupClientConnWithOptsAndTimeout(t *testing.T, timeout time.Duration, opts ...wsrpc.DialOption) (*wsrpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	t.Cleanup(cancel)
 
