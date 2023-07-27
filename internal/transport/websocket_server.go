@@ -16,9 +16,6 @@ type WebsocketServer struct {
 	// config
 	writeTimeout time.Duration
 
-	// config: max bytes in a message request
-	readLimit int64
-
 	// Underlying communication channel
 	conn WebSocketConn
 
@@ -60,7 +57,6 @@ func newWebsocketServerWithConfig(c WebSocketConn, config *ServerConfig, afterWr
 
 	s := &WebsocketServer{
 		writeTimeout:   writeTimeout,
-		readLimit:      readLimit,
 		conn:           c,
 		afterWritePump: afterWritePump,
 		write:          make(chan []byte),

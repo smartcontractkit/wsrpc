@@ -41,6 +41,30 @@ type WebsocketClient struct {
 // newWebsocketClient establishes the transport with the required ConnectOptions
 // and returns it to the caller.
 func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, afterWritePump func()) (*WebsocketClient, error) {
+	d := websocket.Dialer{
+		TLSClientConfig:  opts.TransportCredentials.Config,
+		HandshakeTimeout: 45 * time.Second,
+	}
+
+	url := fmt.Sprintf("wss://%s", addr)
+
+	var conn WebSocketConn
+	var err error
+	conn, _, err = d.DialContext(ctx, url, http.Header{})
+
+	if err != nil {
+		return nil, fmt.Errorf("[wsrpc] error while dialing %w", err)
+	}
+
+	c := newWebsocketClientConfig(ctx, log, addr, opts, afterWritePump, conn)
+
+	// Start go routines to establish the read/write channels
+	c.Start()
+
+	return c, nil
+}
+
+func newWebsocketClientConfig(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, afterWritePump func(), conn WebSocketConn) *WebsocketClient {
 	writeTimeout := defaultWriteTimeout
 	if opts.WriteTimeout != 0 {
 		writeTimeout = opts.WriteTimeout
@@ -49,17 +73,6 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 	readLimit := defaultReadLimit
 	if opts.ReadLimit != 0 {
 		readLimit = opts.ReadLimit
-	}
-
-	d := websocket.Dialer{
-		TLSClientConfig:  opts.TransportCredentials.Config,
-		HandshakeTimeout: 45 * time.Second,
-	}
-
-	url := fmt.Sprintf("wss://%s", addr)
-	conn, _, err := d.DialContext(ctx, url, http.Header{})
-	if err != nil {
-		return nil, fmt.Errorf("[wsrpc] error while dialing %w", err)
 	}
 
 	conn.SetReadLimit(readLimit)
@@ -76,10 +89,7 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 		log:            log,
 	}
 
-	// Start go routines to establish the read/write channels
-	c.Start()
-
-	return c, nil
+	return c
 }
 
 // Read returns a channel which provides the messages as they are read.
