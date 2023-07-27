@@ -115,10 +115,7 @@ func (s *WebsocketServer) start() {
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
-	defer func() {
-		close(s.closeWritePump)
-		s.conn.Close()
-	}()
+	defer close(s.closeWritePump)
 
 	//nolint:errcheck
 	s.conn.SetReadDeadline(time.Now().Add(pongWait))
