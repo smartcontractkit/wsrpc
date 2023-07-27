@@ -22,7 +22,7 @@ type WebsocketClient struct {
 	conn *websocket.Conn
 
 	// Callback function called when the transport is closed
-	onClose func()
+	afterWritePump func()
 
 	wg sync.WaitGroup
 
@@ -31,16 +31,16 @@ type WebsocketClient struct {
 	read  chan []byte
 
 	// A signal channel called when the reader encounters a websocket close error
-	done chan struct{}
+	closeWritePump chan struct{}
 	// A signal channel called when the transport is closed
-	interrupt chan struct{}
+	closeConn chan struct{}
 
 	log logger.Logger
 }
 
 // newWebsocketClient establishes the transport with the required ConnectOptions
 // and returns it to the caller.
-func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, onClose func()) (*WebsocketClient, error) {
+func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opts ConnectOptions, afterWritePump func()) (*WebsocketClient, error) {
 	writeTimeout := defaultWriteTimeout
 	if opts.WriteTimeout != 0 {
 		writeTimeout = opts.WriteTimeout
@@ -58,15 +58,15 @@ func newWebsocketClient(ctx context.Context, log logger.Logger, addr string, opt
 	}
 
 	c := &WebsocketClient{
-		ctx:          ctx,
-		writeTimeout: writeTimeout,
-		conn:         conn,
-		onClose:      onClose,
-		write:        make(chan []byte),
-		read:         make(chan []byte),
-		done:         make(chan struct{}),
-		interrupt:    make(chan struct{}),
-		log:          log,
+		ctx:            ctx,
+		writeTimeout:   writeTimeout,
+		conn:           conn,
+		afterWritePump: afterWritePump,
+		write:          make(chan []byte),
+		read:           make(chan []byte),
+		closeWritePump: make(chan struct{}),
+		closeConn:      make(chan struct{}),
+		log:            log,
 	}
 
 	// Start go routines to establish the read/write channels
@@ -83,9 +83,9 @@ func (c *WebsocketClient) Read() <-chan []byte {
 // Write writes a message the websocket connection.
 func (c *WebsocketClient) Write(ctx context.Context, msg []byte) error {
 	select {
-	case <-c.done:
+	case <-c.closeWritePump:
 		return fmt.Errorf("[wsrpc] could not write message, websocket is closed")
-	case <-c.interrupt:
+	case <-c.closeConn:
 		return fmt.Errorf("[wsrpc] could not write message, transport is closed")
 	case <-ctx.Done():
 		return fmt.Errorf("[wsrpc] could not write message, context is done")
@@ -96,12 +96,12 @@ func (c *WebsocketClient) Write(ctx context.Context, msg []byte) error {
 
 // Close closes the websocket connection and cleans up pump goroutines.
 func (c *WebsocketClient) Close() {
-	close(c.interrupt)
+	close(c.closeConn)
 
 	c.wg.Wait()
 }
 
-// start run readPump in a goroutine and waits on writePump.
+// Start runs readPump and writePump in goroutines.
 func (c *WebsocketClient) Start() {
 	// Set up reader
 	c.wg.Add(1)
@@ -120,7 +120,7 @@ func (c *WebsocketClient) Start() {
 // this goroutine.
 func (c *WebsocketClient) readPump() {
 	defer func() {
-		close(c.done)
+		close(c.closeWritePump)
 		c.wg.Done()
 	}()
 
@@ -129,20 +129,14 @@ func (c *WebsocketClient) readPump() {
 	c.conn.SetPongHandler(handlePong(c.conn))
 
 	for {
-		select {
-		case <-c.interrupt:
+		_, msg, err := c.conn.ReadMessage()
+
+		if err != nil {
+			c.log.Errorw("[wsrpc] Read error", "err", err)
 			return
-		default:
-			_, msg, err := c.conn.ReadMessage()
-
-			if err != nil {
-				c.log.Errorw("[wsrpc] Read error", "err", err)
-
-				return
-			}
-
-			c.read <- msg
 		}
+
+		c.read <- msg
 	}
 }
 
@@ -155,13 +149,13 @@ func (c *WebsocketClient) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		c.onClose()
+		c.afterWritePump()
 		c.wg.Done()
 	}()
 
 	for {
 		select {
-		case <-c.done:
+		case <-c.closeWritePump:
 			// When the read detects a websocket closure, it will close the done
 			// channel so we can exit
 			return
@@ -186,7 +180,7 @@ func (c *WebsocketClient) writePump() {
 
 				return
 			}
-		case <-c.interrupt:
+		case <-c.closeConn:
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
 			err := c.conn.WriteMessage(websocket.CloseMessage,
@@ -197,7 +191,7 @@ func (c *WebsocketClient) writePump() {
 			}
 			c.conn.Close()
 			select {
-			case <-c.done:
+			case <-c.closeWritePump:
 			case <-time.After(time.Second):
 			}
 

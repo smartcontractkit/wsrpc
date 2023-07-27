@@ -140,7 +140,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	done := make(chan struct{})
 
 	config := &transport.ServerConfig{}
-	onClose := func() {
+	afterWritePump := func() {
 		// There is no connection manager when we are shutting down, so
 		// we can ignore removing the connection.
 		s.mu.RLock()
@@ -163,7 +163,7 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	s.serveWG.Add(1)
 
 	// Initialize the transport
-	tr := transport.NewServerTransport(conn, config, onClose)
+	tr := transport.NewServerTransport(conn, config, afterWritePump)
 
 	// Register the transport against the public key
 	s.connMgr.registerConnection(pubKey, tr)

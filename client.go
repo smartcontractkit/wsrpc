@@ -43,7 +43,7 @@ type ClientConn struct {
 	// The websocket address
 	target string
 	// A channel which receives updates when connectivity state changes
-	csCh <-chan connectivity.State
+	stateCh <-chan connectivity.State
 	// Manages the connectivity state.
 	csMgr *connectivityStateManager
 
@@ -158,11 +158,11 @@ func (cc *ClientConn) GetState() connectivity.State {
 
 // newAddrConn creates an addrConn for the addr and sets it to cc.conn.
 func (cc *ClientConn) newAddrConn(addr string) *addrConn {
-	csCh := make(chan connectivity.State)
+	stateCh := make(chan connectivity.State)
 	ac := &addrConn{
 		state:   connectivity.Idle,
 		wg:      &sync.WaitGroup{},
-		stateCh: csCh,
+		stateCh: stateCh,
 		addr:    addr,
 		dopts:   cc.dopts,
 	}
@@ -170,7 +170,7 @@ func (cc *ClientConn) newAddrConn(addr string) *addrConn {
 	cc.mu.Lock()
 
 	cc.addrConn = ac
-	cc.csCh = csCh
+	cc.stateCh = stateCh
 	cc.csMgr.getNotifyChan()
 	cc.mu.Unlock()
 
@@ -191,7 +191,7 @@ func (cc *ClientConn) listenForConnectivityChange() {
 		select {
 		case <-cc.ctx.Done():
 			return
-		case s := <-cc.csCh:
+		case s := <-cc.stateCh:
 			cc.csMgr.updateState(s)
 		}
 	}
@@ -604,7 +604,7 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 	once := sync.Once{}
 
 	// Called when the transport closes
-	onClose := func() {
+	afterWritePump := func() {
 		ac.mu.Lock()
 		once.Do(func() {
 			if connectivity.Ready == ac.state {
@@ -615,7 +615,7 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 		reconnect.Fire()
 	}
 
-	tr, err := transport.NewClientTransport(ac.ctx, ac.dopts.logger, addr, copts, onClose)
+	tr, err := transport.NewClientTransport(ac.ctx, ac.dopts.logger, addr, copts, afterWritePump)
 
 	return tr, reconnect, err
 }
