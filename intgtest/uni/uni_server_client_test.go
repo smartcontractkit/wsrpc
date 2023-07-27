@@ -11,15 +11,16 @@ import (
 
 	"github.com/smartcontractkit/wsrpc"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
+	"github.com/smartcontractkit/wsrpc/intgtest/utils"
 	"github.com/smartcontractkit/wsrpc/peer"
 )
 
 func Test_ServerClient_SimpleCall(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start the server
-	lis, s := setupServer(t,
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
@@ -30,17 +31,17 @@ func Test_ServerClient_SimpleCall(t *testing.T) {
 	c := pb.NewEchoClient(s)
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConn(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
 	t.Cleanup(conn.Close)
 
 	// Register the handlers on the wsrpc client
-	pb.RegisterEchoServer(conn, &echoServer{})
+	pb.RegisterEchoServer(conn, &utils.EchoServer{})
 
 	// Wait for the connection to be established
-	waitForReadyConnection(t, conn)
+	utils.WaitForReadyConnection(t, conn)
 
 	ctx := peer.NewCallContext(context.Background(), keypairs.Client1.StaticallySizedPublicKey(t))
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -53,16 +54,16 @@ func Test_ServerClient_SimpleCall(t *testing.T) {
 }
 
 func Test_ServerClient_ConcurrentCalls(t *testing.T) {
-	keypairs := generateKeys(t)
+	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
-	// Start the server
-	lis, s := setupServer(t,
+	// Start the serverTest_ServerClient_ConcurrentCalls
+	lis, s := utils.SetupServer(t,
 		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
-	pb.RegisterEchoServer(s, &echoServer{})
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
 	// Create an RPC client for the server
 	c := pb.NewEchoClient(s)
 
@@ -71,7 +72,7 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 	t.Cleanup(s.Stop)
 
 	// Start client
-	conn, err := setupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConn(t, 500*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)
@@ -79,21 +80,26 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 	t.Cleanup(conn.Close)
 
 	// Register the handlers on the wsrpc client
-	pb.RegisterEchoServer(conn, &echoServer{})
+	pb.RegisterEchoServer(conn, &utils.EchoServer{})
 
 	respCh := make(chan *pb.EchoResponse)
-	defer close(respCh)
+	doneCh := make(chan []*pb.EchoResponse)
 
 	pk := keypairs.Client1.StaticallySizedPublicKey(t)
-	reqs := []echoReq{
-		{message: &pb.EchoRequest{Body: "call1", DelayMs: 500}, pubKey: &pk},
-		{message: &pb.EchoRequest{Body: "call2"}, timeout: 200 * time.Millisecond, pubKey: &pk},
+	reqs := []utils.EchoReq{
+		{Message: &pb.EchoRequest{Body: "call1", DelayMs: 500}, PubKey: &pk},
+		{Message: &pb.EchoRequest{Body: "call2"}, Timeout: 2000 * time.Millisecond, PubKey: &pk},
 	}
 
-	processEchos(t, c, reqs, respCh)
+	go func() {
+		doneCh <- utils.WaitForResponses(t, respCh, len(reqs))
+	}()
 
-	actual := waitForResponses(t, respCh, 2)
+	utils.ProcessEchos(t, c, reqs, respCh)
 
+	actual := <-doneCh
+
+	assert.Equal(t, len(reqs), len(actual))
 	assert.Equal(t, "call2", actual[0].Body)
 	assert.Equal(t, "call1", actual[1].Body)
 }
