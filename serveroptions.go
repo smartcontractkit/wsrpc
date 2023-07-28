@@ -28,6 +28,9 @@ type serverOptions struct {
 
 	// The HTTP ReadTimeout the ws server will use. Set to 0 for no timeout
 	wsTimeout time.Duration
+
+	// The request size limit the ws server will use in bytes. Defaults to 10MB.
+	wsReadLimit int64
 }
 
 // funcServerOption wraps a function that modifies serverOptions into an
@@ -54,10 +57,24 @@ func WithHTTPReadTimeout(hctime time.Duration, wstime time.Duration) ServerOptio
 	})
 }
 
-// Creds returns a ServerOption that sets credentials for server connections.
-func Creds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOption {
+func WithWSReadLimit(numBytes int64) ServerOption {
 	return newFuncServerOption(func(o *serverOptions) {
-		pubs := credentials.NewPublicKeys(pubKeys...)
+		o.wsReadLimit = numBytes
+	})
+}
+
+// WithCreds returns a ServerOption that sets credentials for server connections.
+func WithCreds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		privKey, err := credentials.ValidPrivateKeyFromEd25519(privKey)
+		if err != nil {
+			return
+		}
+
+		pubs, err := credentials.ValidPublicKeysFromEd25519(pubKeys...)
+		if err != nil {
+			return
+		}
 
 		config, err := credentials.NewServerTLSConfig(privKey, pubs)
 		if err != nil {
@@ -89,6 +106,7 @@ var defaultServerOptions = serverOptions{
 	readBufferSize:     4096,
 	healthcheckTimeout: 5 * time.Second,
 	wsTimeout:          10 * time.Second,
+	wsReadLimit:        int64(10_000_000),
 }
 
 // WithHealthcheck specifies whether to run a healthcheck endpoint. If a url

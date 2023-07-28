@@ -80,8 +80,11 @@ func DialWithContext(ctxCaller context.Context, target string, opts ...DialOptio
 		methodCalls: map[string]MethodCallHandler{},
 	}
 
-	for _, opt := range opts {
-		opt.apply(&cc.dopts)
+	for i, opt := range opts {
+		err := opt.apply(&cc.dopts)
+		if err != nil {
+			return nil, fmt.Errorf("dial option %d failed: %w", i, err)
+		}
 	}
 
 	// Set the backoff strategy. We may need to consider making this

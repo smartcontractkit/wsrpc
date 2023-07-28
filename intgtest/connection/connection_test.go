@@ -21,7 +21,7 @@ func Test_ServerNotRunning(t *testing.T) {
 	keypairs := utils.GenerateKeys(t)
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
@@ -85,7 +85,7 @@ func Test_BlockingDial(t *testing.T) {
 	unblocked := make(chan *wsrpc.ClientConn)
 
 	go func() {
-		conn, err := utils.SetupClientConn(t, 5*time.Second,
+		conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 			wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 			wsrpc.WithBlock(),
 		)
@@ -97,7 +97,7 @@ func Test_BlockingDial(t *testing.T) {
 	// Start the server in a goroutine. We wait to start up the server so we can
 	// test the blocking mechanism.
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	pb.RegisterEchoServer(s, &utils.EchoServer{})
@@ -120,7 +120,7 @@ func Test_BlockingDialTimeout(t *testing.T) {
 	keypairs := utils.GenerateKeys(t)
 
 	// Start client
-	_, err := utils.SetupClientConn(t, 50*time.Millisecond,
+	_, err := utils.SetupClientConnWithOptsAndTimeout(t, 50*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)
@@ -134,7 +134,7 @@ func Test_InvalidCredentials(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
@@ -145,7 +145,7 @@ func Test_InvalidCredentials(t *testing.T) {
 	t.Cleanup(s.Stop)
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -157,9 +157,33 @@ func Test_InvalidCredentials(t *testing.T) {
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// Update the servers allowed list of public keys to include the client's
-	s.UpdatePublicKeys([]ed25519.PublicKey{keypairs.Client1.PubKey})
+	err = s.UpdatePublicKeys(keypairs.Client1.PubKey)
+	require.NoError(t, err)
 
 	utils.WaitForReadyConnection(t, conn)
+}
+
+func Test_InvalidKeyLengthCredentials(t *testing.T) {
+	keypairs := utils.GenerateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client2.PubKey}
+
+	// Start the server
+	lis, s := utils.SetupServer(t,
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
+	)
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
+
+	// Start serving
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+
+	// Start client
+	_, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
+		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey[:ed25519.PublicKeySize-1], keypairs.Server.PubKey),
+	)
+	require.Error(t, err)
 }
 
 func Test_GetConnectedPeerPublicKeys(t *testing.T) {
@@ -168,7 +192,7 @@ func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
@@ -181,7 +205,7 @@ func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 	require.Empty(t, s.GetConnectedPeerPublicKeys())
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -202,7 +226,7 @@ func Test_GetNotificationChan(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
@@ -215,7 +239,7 @@ func Test_GetNotificationChan(t *testing.T) {
 	notifyChan := s.GetConnectionNotifyChan()
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 100*time.Millisecond,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 100*time.Millisecond,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)

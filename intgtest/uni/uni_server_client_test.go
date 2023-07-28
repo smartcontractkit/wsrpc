@@ -21,7 +21,7 @@ func Test_ServerClient_SimpleCall(t *testing.T) {
 
 	// Start the server
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Start serving
@@ -31,7 +31,7 @@ func Test_ServerClient_SimpleCall(t *testing.T) {
 	c := pb.NewEchoClient(s)
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 5*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 
 	// Start the serverTest_ServerClient_ConcurrentCalls
 	lis, s := utils.SetupServer(t,
-		wsrpc.Creds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
 	)
 
 	// Register the ping server implementation with the wsrpc server
@@ -72,7 +72,7 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 	t.Cleanup(s.Stop)
 
 	// Start client
-	conn, err := utils.SetupClientConn(t, 500*time.Second,
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 500*time.Second,
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 		wsrpc.WithBlock(),
 	)

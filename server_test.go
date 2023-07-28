@@ -8,13 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/smartcontractkit/wsrpc/examples/simple/keys"
+	"github.com/smartcontractkit/wsrpc/internal/message"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_Server_UpdatePublicKeys(t *testing.T) {
+
 	_, sPrivKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
 
@@ -22,17 +25,31 @@ func Test_Server_UpdatePublicKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	s := NewServer(
-		Creds(sPrivKey, []ed25519.PublicKey{c1PubKey}),
+		WithCreds(sPrivKey, []ed25519.PublicKey{c1PubKey}),
 	)
 
-	assert.Equal(t, []ed25519.PublicKey{c1PubKey}, s.opts.creds.PublicKeys.Keys())
+	require.Equal(t, []ed25519.PublicKey{c1PubKey}, s.opts.creds.PublicKeys.Keys())
+	t.Run("valid_update", func(t *testing.T) {
+		c2PubKey, _, err := ed25519.GenerateKey(nil)
+		require.NoError(t, err)
 
-	c2PubKey, _, err := ed25519.GenerateKey(nil)
-	require.NoError(t, err)
+		err = s.UpdatePublicKeys(c2PubKey)
+		require.NoError(t, err)
 
-	s.UpdatePublicKeys([]ed25519.PublicKey{c2PubKey})
+		assert.Equal(t, []ed25519.PublicKey{c2PubKey}, s.opts.creds.PublicKeys.Keys())
+	})
 
-	assert.Equal(t, []ed25519.PublicKey{c2PubKey}, s.opts.creds.PublicKeys.Keys())
+	t.Run("keys_not_32", func(t *testing.T) {
+		shortKey := make([]byte, ed25519.PublicKeySize-1)
+		longKey := make([]byte, ed25519.PublicKeySize+1)
+
+		err := s.UpdatePublicKeys(shortKey)
+		require.Error(t, err)
+
+		err = s.UpdatePublicKeys(longKey)
+		require.Error(t, err)
+
+	})
 }
 
 func Test_Healthcheck(t *testing.T) {
@@ -43,7 +60,7 @@ func Test_Healthcheck(t *testing.T) {
 	lis, err := net.Listen("tcp", "127.0.0.1:1338")
 	require.NoError(t, err)
 	s := NewServer(
-		Creds(privKey, pubKeys),
+		WithCreds(privKey, pubKeys),
 		WithHealthcheck("127.0.0.1:1337"),
 	)
 
@@ -70,7 +87,7 @@ func Test_Server_HTTPTimeout_Defaults(t *testing.T) {
 	pubKeys := []ed25519.PublicKey{}
 
 	defaultServer := NewServer(
-		Creds(privKey, pubKeys),
+		WithCreds(privKey, pubKeys),
 		WithHealthcheck("127.0.0.1:1337"),
 	)
 
@@ -79,7 +96,7 @@ func Test_Server_HTTPTimeout_Defaults(t *testing.T) {
 
 	expectedTimeout := 1 * time.Nanosecond
 	timeoutServer := NewServer(
-		Creds(privKey, pubKeys),
+		WithCreds(privKey, pubKeys),
 		WithHealthcheck("127.0.0.1:1337"),
 		WithHTTPReadTimeout(expectedTimeout, expectedTimeout*2),
 	)
@@ -97,7 +114,7 @@ func Test_Server_HTTPTimeout(t *testing.T) {
 
 	expectedTimeout := 1 * time.Nanosecond
 	s := NewServer(
-		Creds(privKey, pubKeys),
+		WithCreds(privKey, pubKeys),
 		WithHealthcheck("127.0.0.1:1336"),
 		WithHTTPReadTimeout(expectedTimeout, expectedTimeout*2),
 	)
@@ -116,4 +133,47 @@ func Test_Server_HTTPTimeout(t *testing.T) {
 
 		return false
 	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func Test_Server_ValidateMessageRequest(t *testing.T) {
+	s := &Server{
+		service: &serviceInfo{
+			methods: map[string]*MethodDesc{
+				"TestMethod": {},
+			},
+		},
+	}
+
+	t.Run("valid_request", func(t *testing.T) {
+		req := &message.Request{
+			Method:  "TestMethod",
+			CallId:  uuid.New().String(),
+			Payload: []byte("test payload"),
+		}
+
+		err := s.validateMessageRequest(req)
+		require.NoError(t, err)
+	})
+
+	t.Run("invalid_method", func(t *testing.T) {
+		req := &message.Request{
+			Method:  "InvalidMethod",
+			CallId:  uuid.New().String(),
+			Payload: []byte("test payload"),
+		}
+
+		err := s.validateMessageRequest(req)
+		require.Error(t, err)
+	})
+
+	t.Run("invalid_call_id", func(t *testing.T) {
+		req := &message.Request{
+			Method:  "TestMethod",
+			CallId:  "invalid uuid",
+			Payload: []byte("test payload"),
+		}
+
+		err := s.validateMessageRequest(req)
+		require.Error(t, err)
+	})
 }

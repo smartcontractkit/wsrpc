@@ -4,15 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/gorilla/websocket"
-
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/logger"
 )
 
 const (
-	// Time allowed to write a message to the connection.
 	defaultWriteTimeout = 10 * time.Second
+
+	defaultReadLimit = int64(100_000_000) // 100 MB
 
 	// Time allowed to read the next pong message from the peer.
 	pongWait = 20 * time.Second
@@ -21,9 +20,26 @@ const (
 	pingPeriod = (pongWait * 9) / 10
 )
 
+// Abstracts websocket.Conn
+type WebSocketConn interface {
+	SetReadLimit(limit int64)
+	SetReadDeadline(time time.Time) error
+	SetPongHandler(handler func(string) error)
+	SetWriteDeadline(time.Time) error
+	ReadMessage() (messageType int, p []byte, err error)
+	WriteMessage(messageType int, data []byte) error
+	WriteControl(messageType int, data []byte, deadline time.Time) error
+	Close() error
+}
+
 // ConnectOptions covers all relevant options for communicating with the server.
 type ConnectOptions struct {
+	// Time allowed to write a message to the connection.
 	WriteTimeout time.Duration
+
+	// Size of request allowed
+	ReadLimit int64
+
 	// TransportCredentials stores the Authenticator required to setup a client
 	// connection.
 	TransportCredentials credentials.TransportCredentials
@@ -66,6 +82,7 @@ const (
 
 // ServerConfig consists of all the configurations to establish a server transport.
 type ServerConfig struct {
+	ReadLimit    int64
 	WriteTimeout time.Duration
 }
 
@@ -85,11 +102,11 @@ type ServerTransport interface {
 
 // NewServerTransport creates a ServerTransport with conn or non-nil error
 // if it fails.
-func NewServerTransport(c *websocket.Conn, config *ServerConfig, afterWritePump func()) ServerTransport {
+func NewServerTransport(c WebSocketConn, config *ServerConfig, afterWritePump func()) ServerTransport {
 	return newWebsocketServer(c, config, afterWritePump)
 }
 
-func handlePong(conn *websocket.Conn) func(string) error {
+func handlePong(conn WebSocketConn) func(string) error {
 	return func(msg string) error {
 		return conn.SetReadDeadline(time.Now().Add(pongWait))
 	}
