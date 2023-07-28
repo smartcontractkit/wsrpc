@@ -2,7 +2,6 @@ package wsrpc
 
 import (
 	"crypto/ed25519"
-	"log"
 	"time"
 
 	"github.com/smartcontractkit/wsrpc/credentials"
@@ -22,7 +21,7 @@ type dialOptions struct {
 
 // DialOption configures how we set up the connection.
 type DialOption interface {
-	apply(*dialOptions)
+	apply(*dialOptions) error
 }
 
 // funcDialOption wraps a function that modifies dialOptions into an
@@ -31,8 +30,9 @@ type funcDialOption struct {
 	f func(*dialOptions)
 }
 
-func (fdo *funcDialOption) apply(do *dialOptions) {
+func (fdo *funcDialOption) apply(do *dialOptions) error {
 	fdo.f(do)
+	return nil
 }
 
 func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
@@ -41,33 +41,42 @@ func newFuncDialOption(f func(*dialOptions)) *funcDialOption {
 	}
 }
 
+type funcDialOptionWithErr struct {
+	funcWithErr func(*dialOptions) error
+}
+
+func (fdo *funcDialOptionWithErr) apply(do *dialOptions) error {
+	return fdo.funcWithErr(do)
+}
+
+func newFuncDialOptionWithErr(f func(*dialOptions) error) *funcDialOptionWithErr {
+	return &funcDialOptionWithErr{
+		funcWithErr: f,
+	}
+}
+
 // WithTransportCredentials returns a DialOption which configures a connection
 // level security credentials (e.g., TLS/SSL).
 func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) DialOption {
-	return newFuncDialOption(func(o *dialOptions) {
+	return newFuncDialOptionWithErr(func(o *dialOptions) error {
 		privKey, err := credentials.ValidPrivateKeyFromEd25519(privKey)
 		if err != nil {
-			log.Println(err)
-
-			return
+			return err
 		}
 
 		pubs, err := credentials.ValidPublicKeysFromEd25519(serverPubKey)
 		if err != nil {
-			log.Println(err)
-
-			return
+			return err
 		}
 
 		// Generate the TLS config for the client
 		config, err := credentials.NewClientTLSConfig(privKey, pubs)
 		if err != nil {
-			log.Println(err)
-
-			return
+			return err
 		}
 
 		o.copts.TransportCredentials = credentials.NewTLS(config, pubs)
+		return nil
 	})
 }
 

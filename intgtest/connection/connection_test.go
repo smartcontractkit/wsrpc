@@ -163,6 +163,29 @@ func Test_InvalidCredentials(t *testing.T) {
 	utils.WaitForReadyConnection(t, conn)
 }
 
+func Test_InvalidKeyLengthCredentials(t *testing.T) {
+	keypairs := utils.GenerateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client2.PubKey}
+
+	// Start the server
+	lis, s := utils.SetupServer(t,
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
+	)
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
+
+	// Start serving
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+
+	// Start client
+	_, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
+		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey[:ed25519.PublicKeySize-1], keypairs.Server.PubKey),
+	)
+	require.Error(t, err)
+}
+
 func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
