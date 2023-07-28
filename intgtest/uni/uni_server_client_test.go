@@ -1,4 +1,4 @@
-package intgtest
+package uni_test
 
 import (
 	"context"
