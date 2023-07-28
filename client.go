@@ -35,18 +35,20 @@ type ClientInterface interface {
 // ClientConn represents a virtual connection to a websocket endpoint, to
 // perform and serve RPCs.
 type ClientConn struct {
-	ctx context.Context
-	mu  sync.RWMutex
+	ctx    context.Context
+	cancel context.CancelFunc
+	mu     sync.RWMutex
+	wg     *sync.WaitGroup
 
 	// The websocket address
 	target string
 	// A channel which receives updates when connectivity state changes
-	csCh <-chan connectivity.State
+	stateCh <-chan connectivity.State
 	// Manages the connectivity state.
 	csMgr *connectivityStateManager
 
-	dopts dialOptions
-	conn  *addrConn
+	dopts    dialOptions
+	addrConn *addrConn
 
 	// Contains all pending method call ids and a handler to call when a
 	// response is received
@@ -57,16 +59,21 @@ type ClientConn struct {
 }
 
 func Dial(target string, opts ...DialOption) (*ClientConn, error) {
-	return DialWithContext(context.Background(), target, opts...)
+	ctx := context.Background()
+	return DialWithContext(ctx, target, opts...)
 }
 
 // Dial creates a client connection to the given target. By default, it's
 // a non-blocking dial (the function won't wait for connections to be
 // established, and connecting happens in the background). To make it a blocking
 // dial, use WithBlock() dial option.
-func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*ClientConn, error) {
+func DialWithContext(ctxCaller context.Context, target string, opts ...DialOption) (*ClientConn, error) {
+	ctx, cancel := context.WithCancel(ctxCaller)
+
 	cc := &ClientConn{
-		ctx:         context.Background(),
+		ctx:         ctx,
+		cancel:      cancel,
+		wg:          &sync.WaitGroup{},
 		target:      target,
 		csMgr:       &connectivityStateManager{},
 		dopts:       defaultDialOptions(),
@@ -87,18 +94,18 @@ func DialWithContext(ctx context.Context, target string, opts ...DialOption) (*C
 		return nil, fmt.Errorf("error connecting: %w", err)
 	}
 	cc.mu.Lock()
-	cc.conn = addrConn
+	cc.addrConn = addrConn
 	cc.mu.Unlock()
 
 	if cc.dopts.block {
 		for {
-			s := cc.csMgr.getState()
-			if s == connectivity.Ready {
+			curState := cc.csMgr.getState()
+			if curState == connectivity.Ready {
 				break
 			}
 
 			// Wait for a state change to re run the for loop
-			if !cc.WaitForStateChange(ctx, s) {
+			if !cc.WaitForStateChange(ctx, curState) {
 				addrConn.cancel()
 
 				return nil, ctx.Err()
@@ -151,22 +158,26 @@ func (cc *ClientConn) GetState() connectivity.State {
 
 // newAddrConn creates an addrConn for the addr and sets it to cc.conn.
 func (cc *ClientConn) newAddrConn(addr string) *addrConn {
-	csCh := make(chan connectivity.State)
+	stateCh := make(chan connectivity.State)
 	ac := &addrConn{
 		state:   connectivity.Idle,
-		stateCh: csCh,
-		cc:      cc,
+		wg:      &sync.WaitGroup{},
+		stateCh: stateCh,
 		addr:    addr,
 		dopts:   cc.dopts,
 	}
 	ac.ctx, ac.cancel = context.WithCancel(cc.ctx)
 	cc.mu.Lock()
 
-	cc.conn = ac
-	cc.csCh = csCh
+	cc.addrConn = ac
+	cc.stateCh = stateCh
+	cc.csMgr.getNotifyChan()
 	cc.mu.Unlock()
 
+	cc.wg.Add(1)
 	go cc.listenForConnectivityChange()
+
+	cc.wg.Add(1)
 	go cc.listenForRead()
 
 	return ac
@@ -175,32 +186,41 @@ func (cc *ClientConn) newAddrConn(addr string) *addrConn {
 // listenForConnectivityChange listens for the addrConn's connectivity to change
 // and updates the ClientConn ConnectivityStateManager.
 func (cc *ClientConn) listenForConnectivityChange() {
+	defer cc.wg.Done()
 	for {
-		s := <-cc.csCh
-
-		cc.csMgr.updateState(s)
+		select {
+		case <-cc.ctx.Done():
+			return
+		case s := <-cc.stateCh:
+			cc.csMgr.updateState(s)
+		}
 	}
 }
 
 // listenForRead listens for the connectivity state to be ready and enables the
 // read handler.
 func (cc *ClientConn) listenForRead() {
+	defer cc.wg.Done()
+
 	var done chan struct{}
 	for {
-		notifyChan := cc.csMgr.getNotifyChan()
-		<-notifyChan
+		select {
+		case <-cc.ctx.Done():
+			return
+		case <-cc.csMgr.getNotifyChan():
+			s := cc.csMgr.getState()
 
-		s := cc.csMgr.getState()
-
-		if s == connectivity.Ready {
-			if done == nil {
-				done = make(chan struct{})
-			}
-			go cc.handleRead(done)
-		} else {
-			if done != nil {
-				close(done)
-				done = nil
+			if s == connectivity.Ready {
+				if done == nil {
+					done = make(chan struct{})
+				}
+				cc.wg.Add(1)
+				go cc.handleRead(done)
+			} else {
+				if done != nil {
+					close(done)
+					done = nil
+				}
 			}
 		}
 	}
@@ -209,11 +229,12 @@ func (cc *ClientConn) listenForRead() {
 // handleRead listens to the transport read channel and passes the message to the
 // readFn handler.
 func (cc *ClientConn) handleRead(done <-chan struct{}) {
+	defer cc.wg.Done()
 	var tr transport.ClientTransport
 	var conn *addrConn
 
 	cc.mu.RLock()
-	conn = cc.conn
+	conn = cc.addrConn
 
 	// if connection has been closed, then conn can be nil
 	if conn == nil {
@@ -223,9 +244,13 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 	}
 
 	conn.mu.RLock()
-	tr = cc.conn.transport
+	tr = cc.addrConn.transport
 	conn.mu.RUnlock()
 	cc.mu.RUnlock()
+
+	if nil == tr {
+		return
+	}
 
 	for {
 		select {
@@ -238,13 +263,15 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 
 			switch ex := msg.Exchange.(type) {
 			case *message.Message_Request:
+				cc.wg.Add(1)
 				go cc.handleMessageRequest(ex.Request)
 			case *message.Message_Response:
+				cc.wg.Add(1)
 				go cc.handleMessageResponse(ex.Response)
 			default:
 				cc.dopts.logger.Errorf("Invalid message type: %T", ex)
 			}
-		case <-done:
+		case <-cc.ctx.Done():
 			return
 		}
 	}
@@ -253,6 +280,7 @@ func (cc *ClientConn) handleRead(done <-chan struct{}) {
 // handleMessageRequest looks up the method matching the method name and calls
 // the handler.
 func (cc *ClientConn) handleMessageRequest(r *message.Request) {
+	defer cc.wg.Done()
 	methodName := r.GetMethod()
 	if md, ok := cc.service.methods[methodName]; ok {
 		// Create a decoder function to unmarshal the message
@@ -275,9 +303,9 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 
 		var tr transport.ClientTransport
 		cc.mu.RLock()
-		cc.conn.mu.RLock()
-		tr = cc.conn.transport
-		cc.conn.mu.RUnlock()
+		cc.addrConn.mu.RLock()
+		tr = cc.addrConn.transport
+		cc.addrConn.mu.RUnlock()
 		cc.mu.RUnlock()
 
 		if err := tr.Write(ctx, replyMsg); err != nil {
@@ -289,6 +317,7 @@ func (cc *ClientConn) handleMessageRequest(r *message.Request) {
 // handleMessageResponse finds the call which matches the method call id of the
 // response and sends the payload to the call channel.
 func (cc *ClientConn) handleMessageResponse(r *message.Response) {
+	defer cc.wg.Done()
 	callID := r.GetCallId()
 
 	cc.mu.Lock()
@@ -323,23 +352,26 @@ func (cc *ClientConn) register(sd *ServiceDesc, ss interface{}) {
 
 // Close tears down the ClientConn and all underlying connections.
 func (cc *ClientConn) Close() {
-
+	cc.cancel()
 	cc.mu.Lock()
-	conn := cc.conn
-	cc.conn = nil
+	addrConn := cc.addrConn
+	cc.addrConn = nil
 	cc.mu.Unlock()
 
-	conn.teardown()
+	addrConn.teardown() //closes lower level
+
+	cc.wg.Wait()
 }
 
 // Invoke sends the RPC request on the wire and returns after response is
 // received.
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
+
 	cc.mu.RLock()
-	cc.conn.mu.RLock()
-	state := cc.conn.state
-	cc.conn.mu.RUnlock()
+	cc.addrConn.mu.RLock()
+	state := cc.addrConn.state
+	cc.addrConn.mu.RUnlock()
 	cc.mu.RUnlock()
 
 	if state != connectivity.Ready {
@@ -371,9 +403,9 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 
 	var tr transport.ClientTransport
 	cc.mu.RLock()
-	cc.conn.mu.RLock()
-	tr = cc.conn.transport
-	cc.conn.mu.RUnlock()
+	cc.addrConn.mu.RLock()
+	tr = cc.addrConn.transport
+	cc.addrConn.mu.RUnlock()
 	cc.mu.RUnlock()
 
 	if err := tr.Write(ctx, reqB); err != nil {
@@ -427,8 +459,7 @@ func (cc *ClientConn) removeMethodCall(id string) {
 type addrConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-
-	cc *ClientConn
+	wg     *sync.WaitGroup
 
 	addr  string
 	dopts dialOptions
@@ -468,6 +499,7 @@ func (ac *addrConn) connect() error {
 	ac.mu.Unlock()
 
 	// Start a goroutine connecting to the server asynchronously.
+	ac.wg.Add(1)
 	go ac.resetTransport()
 
 	return nil
@@ -479,17 +511,23 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State) {
 		return
 	}
 	ac.state = s
-	ac.stateCh <- s
+	select {
+	case ac.stateCh <- s:
+		return
+	case <-ac.ctx.Done():
+		return
+	}
+
 }
 
 // resetTransport attempts to connect to the server. If the connection fails,
 // it will continuously attempt reconnection with an exponential backoff.
 func (ac *addrConn) resetTransport() {
-	for i := 0; ; i++ {
+	defer ac.wg.Done()
+	for {
 		ac.mu.Lock()
 		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
-
 			return
 		}
 
@@ -500,16 +538,16 @@ func (ac *addrConn) resetTransport() {
 		ac.transport = nil
 
 		ac.updateConnectivityState(connectivity.Connecting)
-		ac.mu.Unlock()
 
 		newTr, reconnect, err := ac.createTransport(addr, copts)
+
+		ac.mu.Unlock()
 		if err != nil {
 			ac.dopts.logger.Errorf("failed to connect to server at %s, got: %v", addr, err)
 			// After connection failure, the addrConn enters TRANSIENT_FAILURE.
 			ac.mu.Lock()
 			if ac.state == connectivity.Shutdown {
 				ac.mu.Unlock()
-
 				return
 			}
 			ac.updateConnectivityState(connectivity.TransientFailure)
@@ -535,8 +573,6 @@ func (ac *addrConn) resetTransport() {
 		ac.mu.Lock()
 		if ac.state == connectivity.Shutdown {
 			ac.mu.Unlock()
-			newTr.Close()
-
 			return
 		}
 		ac.transport = newTr
@@ -550,9 +586,12 @@ func (ac *addrConn) resetTransport() {
 
 		// Block until the created transport is down. When this happens, we
 		// attempt to reconnect by starting again from the top
-		<-reconnect.Done()
-
-		ac.dopts.logger.Info("Reconnecting to server...")
+		select {
+		case <-ac.ctx.Done():
+			return
+		case <-reconnect.Done():
+			ac.dopts.logger.Info("Reconnecting to server...")
+		}
 	}
 }
 
@@ -565,10 +604,10 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 	once := sync.Once{}
 
 	// Called when the transport closes
-	onClose := func() {
+	afterWritePump := func() {
 		ac.mu.Lock()
 		once.Do(func() {
-			if ac.state == connectivity.Ready {
+			if connectivity.Ready == ac.state {
 				ac.updateConnectivityState(connectivity.Idle)
 			}
 		})
@@ -576,7 +615,7 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 		reconnect.Fire()
 	}
 
-	tr, err := transport.NewClientTransport(ac.cc.ctx, ac.dopts.logger, addr, copts, onClose)
+	tr, err := transport.NewClientTransport(ac.ctx, ac.dopts.logger, addr, copts, afterWritePump)
 
 	return tr, reconnect, err
 }
@@ -584,21 +623,25 @@ func (ac *addrConn) createTransport(addr string, copts transport.ConnectOptions)
 // tearDown starts to tear down the addrConn.
 func (ac *addrConn) teardown() {
 	ac.mu.Lock()
-	defer ac.mu.Unlock()
+	ac.cancel()
 
-	if ac.state == connectivity.Shutdown {
+	if connectivity.Shutdown == ac.state {
+		ac.mu.Unlock()
 		return
 	}
-
-	ac.updateConnectivityState(connectivity.Shutdown)
 
 	curTr := ac.transport
 	ac.transport = nil
 
 	ac.cancel()
+	ac.updateConnectivityState(connectivity.Shutdown)
+	ac.mu.Unlock()
 	if curTr != nil {
+		//syncronously closes lower level
 		curTr.Close()
 	}
+
+	ac.wg.Wait()
 }
 
 // connectivityStateManager keeps the connectivity.State of ClientConn.
@@ -615,17 +658,15 @@ func (csm *connectivityStateManager) updateState(state connectivity.State) {
 	csm.mu.Lock()
 	defer csm.mu.Unlock()
 
-	if csm.state == connectivity.Shutdown {
-		return
-	}
 	if csm.state == state {
 		return
 	}
 	csm.state = state
 	if csm.notifyChan != nil {
 		// There are other goroutines waiting on this channel.
-		close(csm.notifyChan)
+		notifyChan := csm.notifyChan
 		csm.notifyChan = nil
+		close(notifyChan)
 	}
 }
 

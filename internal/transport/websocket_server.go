@@ -23,33 +23,33 @@ type WebsocketServer struct {
 	state transportState
 
 	// Callback function called when the transport is closed
-	onClose func()
+	afterWritePump func()
 
 	// Communication channels
 	write chan []byte
 	read  chan []byte
 
 	// A signal channel called when the reader encounters a websocket close error
-	done chan struct{}
+	closeWritePump chan struct{}
 	// A signal channel called when the transport is closed
-	interrupt chan struct{}
+	closeConn chan struct{}
 }
 
 // newWebsocketServer server upgrades an HTTP connection to a websocket connection.
-func newWebsocketServer(c *websocket.Conn, config *ServerConfig, onClose func()) *WebsocketServer {
+func newWebsocketServer(c *websocket.Conn, config *ServerConfig, afterWritePump func()) *WebsocketServer {
 	writeTimeout := defaultWriteTimeout
 	if config.WriteTimeout != 0 {
 		writeTimeout = config.WriteTimeout
 	}
 
 	s := &WebsocketServer{
-		writeTimeout: writeTimeout,
-		conn:         c,
-		onClose:      onClose,
-		write:        make(chan []byte),
-		read:         make(chan []byte),
-		done:         make(chan struct{}),
-		interrupt:    make(chan struct{}),
+		writeTimeout:   writeTimeout,
+		conn:           c,
+		afterWritePump: afterWritePump,
+		write:          make(chan []byte),
+		read:           make(chan []byte),
+		closeWritePump: make(chan struct{}),
+		closeConn:      make(chan struct{}),
 	}
 
 	go s.start()
@@ -65,9 +65,9 @@ func (s *WebsocketServer) Read() <-chan []byte {
 // Write writes a message the websocket connection.
 func (s *WebsocketServer) Write(ctx context.Context, msg []byte) error {
 	select {
-	case <-s.done:
+	case <-s.closeWritePump:
 		return fmt.Errorf("[wsrpc] could not write message, websocket is closed")
-	case <-s.interrupt:
+	case <-s.closeConn:
 		return fmt.Errorf("[wsrpc] could not write message, transport is closed")
 	case <-ctx.Done():
 		return fmt.Errorf("[wsrpc] could not write message, context is done")
@@ -77,7 +77,7 @@ func (s *WebsocketServer) Write(ctx context.Context, msg []byte) error {
 }
 
 // Close closes the websocket connection and cleans up pump goroutines. Notifies
-// the caller with the onClose callback.
+// the caller with the afterWritePump callback.
 func (s *WebsocketServer) Close() error {
 	s.mu.Lock()
 	// Make sure we only Close once.
@@ -89,8 +89,8 @@ func (s *WebsocketServer) Close() error {
 
 	s.state = closing
 
-	// Close the write channel to stop the go routine
-	close(s.interrupt)
+	// Close the connection and writePump, which causes readPump to close
+	close(s.closeConn)
 
 	s.mu.Unlock()
 
@@ -101,7 +101,7 @@ func (s *WebsocketServer) Close() error {
 func (s *WebsocketServer) start() {
 	defer func() {
 		s.Close()
-		s.onClose()
+		s.afterWritePump()
 	}()
 
 	// Set up reader
@@ -115,7 +115,7 @@ func (s *WebsocketServer) start() {
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (s *WebsocketServer) readPump() {
-	defer close(s.done)
+	defer close(s.closeWritePump)
 
 	//nolint:errcheck
 	s.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -127,8 +127,7 @@ func (s *WebsocketServer) readPump() {
 		// allowing us to clean up the goroutine.
 		if err != nil {
 			log.Println("[wsrpc] Read error: ", err)
-
-			break
+			return
 		}
 
 		s.read <- msg
@@ -146,7 +145,7 @@ func (s *WebsocketServer) writePump() {
 
 	for {
 		select {
-		case <-s.done:
+		case <-s.closeWritePump:
 			// When the read detects a websocket closure, it will close the done
 			// channel so we can exit.
 			return
@@ -168,7 +167,7 @@ func (s *WebsocketServer) writePump() {
 
 				return
 			}
-		case <-s.interrupt:
+		case <-s.closeConn:
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
 			err := s.conn.WriteMessage(websocket.CloseMessage,
@@ -179,7 +178,7 @@ func (s *WebsocketServer) writePump() {
 			}
 			s.conn.Close()
 			select {
-			case <-s.done:
+			case <-s.closeWritePump:
 			case <-time.After(time.Second):
 			}
 
