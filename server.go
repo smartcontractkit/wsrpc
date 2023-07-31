@@ -16,6 +16,7 @@ import (
 
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/message"
+	"github.com/smartcontractkit/wsrpc/internal/methods"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
 	"github.com/smartcontractkit/wsrpc/internal/wsrpcsync"
 	"github.com/smartcontractkit/wsrpc/peer"
@@ -41,7 +42,7 @@ type Server struct {
 
 	// Contains all pending method call ids and the channel to respond to when
 	// a result is received
-	methodCalls map[string]chan<- *message.Response
+	methodCalls *methods.MethodCalls
 
 	// Signals a quit event when the server wants to quit
 	quit *wsrpcsync.Event
@@ -65,7 +66,7 @@ func NewServer(opt ...ServerOption) *Server {
 			WriteBufferSize: opts.writeBufferSize,
 		},
 		connMgr:     newConnectionsManager(),
-		methodCalls: map[string]chan<- *message.Response{},
+		methodCalls: methods.NewMethodCalls(),
 		quit:        wsrpcsync.NewEvent(),
 		done:        wsrpcsync.NewEvent(),
 		serveWG:     sync.WaitGroup{},
@@ -140,6 +141,9 @@ func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {
 	done := make(chan struct{})
 
 	config := &transport.ServerConfig{}
+	config.ReadLimit = s.opts.wsReadLimit
+	config.WriteTimeout = s.opts.wsTimeout
+
 	afterWritePump := func() {
 		// There is no connection manager when we are shutting down, so
 		// we can ignore removing the connection.
@@ -221,7 +225,7 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 			case *message.Message_Request:
 				go s.handleMessageRequest(pubKey, ex.Request)
 			case *message.Message_Response:
-				go s.handleMessageResponse(ex.Response)
+				go s.handleMessageResponse(pubKey, ex.Response)
 			default:
 				log.Println("Invalid message type")
 			}
@@ -235,45 +239,66 @@ func (s *Server) handleRead(pubKey credentials.StaticSizedPublicKey, done <-chan
 // the handler. The connection client's public key is injected into the context,
 // so the handler is able to identify the caller.
 func (s *Server) handleMessageRequest(pubKey credentials.StaticSizedPublicKey, r *message.Request) {
+	if err := s.validateMessageRequest(r); err != nil {
+		log.Printf("error validating request: %s", err)
+		return
+	}
+
 	methodName := r.GetMethod()
-	if md, ok := s.service.methods[methodName]; ok {
-		// Create a decoder function to unmarshal the message
-		dec := func(v interface{}) error {
-			return UnmarshalProtoMessage(r.GetPayload(), v)
-		}
+	md := s.service.methods[methodName]
+	// Create a decoder function to unmarshal the message
+	dec := func(v interface{}) error {
+		return UnmarshalProtoMessage(r.GetPayload(), v)
+	}
 
-		// Inject the peer's public key into the context so the handler can use it
-		ctx := peer.NewContext(context.Background(), &peer.Peer{PublicKey: pubKey})
-		v, herr := md.Handler(s.service.serviceImpl, ctx, dec)
+	// Inject the peer's public key into the context so the handler can use it
+	ctx := peer.NewContext(context.Background(), &peer.Peer{PublicKey: pubKey})
+	v, herr := md.Handler(s.service.serviceImpl, ctx, dec)
 
-		msg, err := message.NewResponse(r.GetCallId(), v, herr)
-		if err != nil {
-			return
-		}
+	msg, err := message.NewResponse(r.GetCallId(), v, herr)
+	if err != nil {
+		return
+	}
 
-		replyMsg, err := MarshalProtoMessage(msg)
-		if err != nil {
-			return
-		}
+	replyMsg, err := MarshalProtoMessage(msg)
+	if err != nil {
+		return
+	}
 
-		if err := s.sendMsg(ctx, pubKey, replyMsg); err != nil {
-			log.Printf("error sending message: %s", err)
-		}
+	if err := s.sendMsg(ctx, pubKey, replyMsg); err != nil {
+		log.Printf("error sending message: %s", err)
 	}
 }
 
 // handleMessageResponse finds the call which matches the method call id of the
 // response and sends the payload to the call channel.
-func (s *Server) handleMessageResponse(r *message.Response) {
+func (s *Server) handleMessageResponse(pubKey credentials.StaticSizedPublicKey, r *message.Response) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	callID := r.GetCallId()
-	if call, ok := s.methodCalls[callID]; ok {
-		call <- r
-
-		s.removeMethodCall(callID) // Delete the call now that we have completed the request/response cycle
+	call, err := s.methodCalls.GetMessageResponseChannelForPublicKey(pubKey, callID)
+	if err != nil {
+		log.Printf("error handling message response: %s", err)
+		return
 	}
+
+	call <- r
+	s.removeMethodCall(pubKey, callID) // Delete the call now that we have completed the request/response cycle
+}
+
+func (s *Server) validateMessageRequest(r *message.Request) error {
+	methodName := r.GetMethod()
+	if _, ok := s.service.methods[methodName]; !ok {
+		return fmt.Errorf("unrecognized method: %v", methodName)
+	}
+
+	callId := r.GetCallId()
+	if id, err := uuid.Parse(callId); err != nil || id.Version() != 4 {
+		return fmt.Errorf("invalid callId %s: %w", callId, err)
+	}
+
+	return nil
 }
 
 // RegisterService registers a service and its implementation to the wsrpc
@@ -311,16 +336,16 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 		return err
 	}
 
-	s.mu.Lock()
-	wait := s.registerMethodCall(callID)
-	s.mu.Unlock()
-
 	// Extract the public key from context
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return errors.New("could not extract public key")
 	}
 	pubKey := p.PublicKey
+
+	s.mu.Lock()
+	wait := s.registerMethodCall(pubKey, callID)
+	s.mu.Unlock()
 
 	if err = s.sendMsg(ctx, pubKey, req); err != nil {
 		return err
@@ -341,7 +366,7 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 	case <-ctx.Done():
 		// Remove the call since we have timeout
 		s.mu.Lock()
-		s.removeMethodCall(callID)
+		s.removeMethodCall(pubKey, callID)
 		s.mu.Unlock()
 
 		return fmt.Errorf("call timeout: %w", ctx.Err())
@@ -352,12 +377,18 @@ func (s *Server) Invoke(ctx context.Context, method string, args interface{}, re
 
 // UpdatePublicKeys updates the list of allowable public keys in the TLS config
 // and drops the connections which match the deleted keys.
-func (s *Server) UpdatePublicKeys(pubKeys []ed25519.PublicKey) {
+func (s *Server) UpdatePublicKeys(ed25519PubKeys ...ed25519.PublicKey) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	pubKeys, err := credentials.ValidPublicKeysFromEd25519(ed25519PubKeys...)
+	if err != nil {
+		return fmt.Errorf("invalid public keys: %s", err)
+	}
+
 	s.opts.creds.PublicKeys.Replace(pubKeys) //credentials.NewPublicKeys(pubKeys...)
 	s.removeConnectionsToDeletedKeys(pubKeys)
+	return nil
 }
 
 // GetConnectionNotifyChan gets the connection notification channel.
@@ -402,10 +433,10 @@ func (s *Server) Stop() {
 
 // When the list of allowable certs are updated, we need to refresh the existing
 // connections as well and shutdown any client connections no longer allowed.
-func (s *Server) removeConnectionsToDeletedKeys(pubKeys []ed25519.PublicKey) {
+func (s *Server) removeConnectionsToDeletedKeys(pubKeys *credentials.PublicKeys) {
 	pubKeysMap := make(map[credentials.StaticSizedPublicKey]bool)
 
-	for _, pk := range pubKeys {
+	for _, pk := range pubKeys.Keys() {
 		pubKey, err := credentials.ToStaticallySizedPublicKey(pk)
 		if err != nil {
 			log.Print("[Server] error reading keys while removing connections: ", err)
@@ -446,9 +477,9 @@ func (s *Server) ensureSingleClientConnection(cert *x509.Certificate) ([ed25519.
 // registerMethodCall registers a method call to the method call map.
 //
 // This requires a lock on cc.mu.
-func (s *Server) registerMethodCall(id string) <-chan *message.Response {
+func (s *Server) registerMethodCall(pubKey credentials.StaticSizedPublicKey, id string) <-chan *message.Response {
 	wait := make(chan *message.Response)
-	s.methodCalls[id] = wait
+	s.methodCalls.PutMethodCallForPublicKey(pubKey, id, wait)
 
 	return wait
 }
@@ -456,8 +487,8 @@ func (s *Server) registerMethodCall(id string) <-chan *message.Response {
 // removeMethodCall deregisters a method call to the method call map.
 //
 // This requires a lock on cc.mu.
-func (s *Server) removeMethodCall(id string) {
-	delete(s.methodCalls, id)
+func (s *Server) removeMethodCall(pubKey credentials.StaticSizedPublicKey, id string) {
+	s.methodCalls.DeleteMethodCall(pubKey, id)
 }
 
 // connectionsManager manages the active clients connections.

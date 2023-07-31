@@ -47,18 +47,29 @@ type UniClientConn struct {
 }
 
 // DialUniWithContext will blocks until connection is established or context expires.
-func DialUniWithContext(ctx context.Context, lggr Logger, target string, privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) (*UniClientConn, error) {
-	pubs := credentials.NewPublicKeys(serverPubKey)
+func DialUniWithContext(ctx context.Context, lggr Logger, target string, ed25519PrivKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) (*UniClientConn, error) {
+	privKey, err := credentials.ValidPrivateKeyFromEd25519(ed25519PrivKey)
+	if err != nil {
+		return nil, err
+	}
+
+	pubs, err := credentials.ValidPublicKeysFromEd25519(serverPubKey)
+	if err != nil {
+		return nil, err
+	}
+
 	tlsConfig, err := credentials.NewClientTLSConfig(privKey, pubs)
 	if err != nil {
 		return nil, err
 	}
+
 	conn, err := retryConnectWithBackoff(ctx, lggr, func(ctx2 context.Context) (Conn, error) {
 		return connect(ctx2, target, tlsConfig)
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return &UniClientConn{conn: conn, tlsConfig: tlsConfig, target: target, lggr: lggr, connector: connect}, nil
 }
 
