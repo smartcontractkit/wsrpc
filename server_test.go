@@ -189,3 +189,23 @@ func Test_Server_OpenConnections(t *testing.T) {
 
 	assert.Equal(t, 0, s.OpenConnections())
 }
+
+func Test_Server_Metrics(t *testing.T) {
+	privKey := keys.FromHex(keys.ServerPrivKey)
+	pubKeys := []ed25519.PublicKey{}
+
+	t.Run("default_metrics", func(t *testing.T) {
+		s := NewServer(
+			WithCreds(privKey, pubKeys),
+		)
+		assert.Equal(t, ":2112", s.opts.metricsTarget)
+	})
+
+	t.Run("configured_metrics_target", func(t *testing.T) {
+		s := NewServer(
+			WithCreds(privKey, pubKeys),
+			WithPrometheusMetricsTarget(":2113"),
+		)
+		assert.Equal(t, ":2113", s.opts.metricsTarget)
+	})
+}

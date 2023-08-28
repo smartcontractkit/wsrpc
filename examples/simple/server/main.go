@@ -54,6 +54,9 @@ func main() {
 	})
 	c := pb.NewGnipClient(s)
 
+	// Serve prom metrics
+	go s.ServeMetrics()
+
 	// Start serving
 	go s.Serve(lis)
 	defer s.Stop()

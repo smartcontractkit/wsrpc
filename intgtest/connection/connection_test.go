@@ -3,6 +3,8 @@ package connection_test
 import (
 	"context"
 	"crypto/ed25519"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
@@ -256,7 +258,7 @@ func Test_GetNotificationChan(t *testing.T) {
 	}
 }
 
-func Test_ServerOpenConnections(t *testing.T) {
+func Test_Server_OpenConnections(t *testing.T) {
 	keypairs := utils.GenerateKeys(t)
 	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
 
@@ -284,4 +286,40 @@ func Test_ServerOpenConnections(t *testing.T) {
 	utils.WaitForReadyConnection(t, conn)
 
 	require.Equal(t, s.OpenConnections(), 1)
+}
+
+func Test_Metrics(t *testing.T) {
+	keypairs := utils.GenerateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
+	target := ":2113"
+
+	// Start the server
+	lis, s := utils.SetupServer(t,
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
+		wsrpc.WithPrometheusMetricsTarget(target),
+	)
+	t.Cleanup(func() {
+		lis.Close()
+	})
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
+
+	// Start metrics
+	go s.ServeMetrics()
+	t.Cleanup(s.Stop)
+
+	resp, err := http.Get("http://localhost" + target + "/metrics")
+	if err != nil {
+		t.Fatalf("Could not send GET request: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("Could not read response body: %v", err)
+		}
+		bodyString := string(bodyBytes)
+		t.Fatalf("Expected status 200 OK, got %v. Response body: %s", resp.Status, bodyString)
+	}
 }
