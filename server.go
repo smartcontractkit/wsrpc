@@ -117,6 +117,12 @@ func (s *Server) Serve(lis net.Listener) {
 	<-s.done.Done()
 }
 
+func (s *Server) OpenConnections() int {
+	s.connMgr.mu.Lock()
+	defer s.connMgr.mu.Unlock()
+	return len(s.connMgr.conns)
+}
+
 // wshandler upgrades the HTTP connection to a websocket connection and
 // registers the connection's pub key for the client.
 func (s *Server) wshandler(w http.ResponseWriter, r *http.Request) {

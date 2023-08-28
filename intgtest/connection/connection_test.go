@@ -255,3 +255,33 @@ func Test_GetNotificationChan(t *testing.T) {
 		assert.Fail(t, "did not notify")
 	}
 }
+
+func Test_ServerOpenConnections(t *testing.T) {
+	keypairs := utils.GenerateKeys(t)
+	pubKeys := []ed25519.PublicKey{keypairs.Client1.PubKey}
+
+	// Start the server
+	lis, s := utils.SetupServer(t,
+		wsrpc.WithCreds(keypairs.Server.PrivKey, pubKeys),
+	)
+
+	// Register the ping server implementation with the wsrpc server
+	pb.RegisterEchoServer(s, &utils.EchoServer{})
+
+	// Start serving
+	go s.Serve(lis)
+	t.Cleanup(s.Stop)
+
+	require.Equal(t, s.OpenConnections(), 0)
+
+	// Start client
+	conn, err := utils.SetupClientConnWithOptsAndTimeout(t, 5*time.Second,
+		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
+	)
+	require.NoError(t, err)
+	t.Cleanup(conn.Close)
+
+	utils.WaitForReadyConnection(t, conn)
+
+	require.Equal(t, s.OpenConnections(), 1)
+}

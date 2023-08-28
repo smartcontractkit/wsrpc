@@ -177,3 +177,15 @@ func Test_Server_ValidateMessageRequest(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func Test_Server_OpenConnections(t *testing.T) {
+	privKey := keys.FromHex(keys.ServerPrivKey)
+	pubKeys := []ed25519.PublicKey{}
+
+	s := NewServer(
+		WithCreds(privKey, pubKeys),
+		WithHealthcheck("127.0.0.1:1337"),
+	)
+
+	assert.Equal(t, 0, s.OpenConnections())
+}
