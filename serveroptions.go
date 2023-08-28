@@ -31,6 +31,9 @@ type serverOptions struct {
 
 	// The request size limit the ws server will use in bytes. Defaults to 10MB.
 	wsReadLimit int64
+
+	// The target for prometheus metrics. Defaults to ":2112"
+	metricsTarget string
 }
 
 // funcServerOption wraps a function that modifies serverOptions into an
@@ -85,6 +88,14 @@ func WithCreds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOp
 	})
 }
 
+// WithPrometheusMetrics returns a ServerOption that sets up prometheus metrics.
+// If target is nil, the default addr is applied.
+func WithPrometheusMetricsTarget(target string) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		o.metricsTarget = target
+	})
+}
+
 // WriteBufferSize specifies the I/O write buffer size in bytes. If a buffer
 // size is zero, then a useful default size is used.
 func WriteBufferSize(s int) ServerOption {
@@ -107,6 +118,7 @@ var defaultServerOptions = serverOptions{
 	healthcheckTimeout: 5 * time.Second,
 	wsTimeout:          10 * time.Second,
 	wsReadLimit:        int64(10_000_000),
+	metricsTarget:      ":2112",
 }
 
 // WithHealthcheck specifies whether to run a healthcheck endpoint. If a url

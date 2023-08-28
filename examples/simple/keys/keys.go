@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+
 	"github.com/smartcontractkit/wsrpc/credentials"
 )
 

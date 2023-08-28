@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/smartcontractkit/wsrpc/credentials"
 	"github.com/smartcontractkit/wsrpc/internal/message"
@@ -29,6 +30,9 @@ type Server struct {
 	mu sync.RWMutex
 
 	wssrv *http.Server
+
+	// prometheus metrics server
+	metricsSrv *http.Server
 
 	opts serverOptions
 
@@ -59,6 +63,9 @@ func NewServer(opt ...ServerOption) *Server {
 		o.apply(&opts)
 	}
 
+	metricsHandler := http.NewServeMux()
+	metricsHandler.HandleFunc("/metrics", promhttp.Handler().ServeHTTP)
+
 	s := &Server{
 		opts: opts,
 		upgrader: websocket.Upgrader{
@@ -70,9 +77,26 @@ func NewServer(opt ...ServerOption) *Server {
 		quit:        wsrpcsync.NewEvent(),
 		done:        wsrpcsync.NewEvent(),
 		serveWG:     sync.WaitGroup{},
+		metricsSrv: &http.Server{
+			Handler:     metricsHandler,
+			ReadTimeout: opts.wsTimeout,
+		},
 	}
 
 	return s
+}
+
+// ServeMetrics sync serves the prometheus metrics on the metricsTarget.
+func (s *Server) ServeMetrics() {
+	mlis, err := net.Listen("tcp", s.opts.metricsTarget)
+	if err != nil {
+		panic(err)
+	}
+	//nolint:errcheck
+	go s.metricsSrv.Serve(mlis)
+	defer s.metricsSrv.Close()
+
+	<-s.done.Done()
 }
 
 // Serve accepts incoming connections on the listener lis, creating a new
