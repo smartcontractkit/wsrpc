@@ -339,6 +339,7 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	cc.mu.RLock()
 	if cc.conn == nil {
 		// Close() has been called
+		cc.mu.RUnlock()
 		return errors.New("client Close() called")
 	}
 	cc.conn.mu.RLock()
