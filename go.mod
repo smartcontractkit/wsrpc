@@ -14,4 +14,4 @@ require (
 
 replace golang.org/x/text => golang.org/x/text v0.11.0
 
-replace golang.org/x/net => golang.org/x/net v0.14.0
+replace golang.org/x/net => golang.org/x/net v0.19.0
