@@ -337,6 +337,10 @@ func (cc *ClientConn) Close() {
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 	cc.mu.RLock()
+	if cc.conn == nil {
+		// Close() has been called
+		return errors.New("client Close() called")
+	}
 	cc.conn.mu.RLock()
 	state := cc.conn.state
 	cc.conn.mu.RUnlock()
