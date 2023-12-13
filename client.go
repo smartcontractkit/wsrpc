@@ -370,8 +370,12 @@ func (cc *ClientConn) Close() {
 // received.
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
-
 	cc.mu.RLock()
+	if cc.addrConn == nil {
+		cc.mu.RUnlock()
+		// Close() has been called
+		return errors.New("client Close() called")
+	}
 	cc.addrConn.mu.RLock()
 	state := cc.addrConn.state
 	cc.addrConn.mu.RUnlock()
@@ -406,6 +410,11 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 
 	var tr transport.ClientTransport
 	cc.mu.RLock()
+	if cc.addrConn == nil {
+		cc.mu.RUnlock()
+		// Close() has been called
+		return errors.New("client Close() called")
+	}
 	cc.addrConn.mu.RLock()
 	tr = cc.addrConn.transport
 	cc.addrConn.mu.RUnlock()
