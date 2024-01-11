@@ -62,10 +62,10 @@ func genService(gen *protogen.Plugin, file *protogen.File, g *protogen.Generated
 	g.P("//")
 
 	// Client interface.
-	g.Annotate(clientName, service.Location)
+	g.AnnotateSymbol(clientName, protogen.Annotation{Location: service.Location})
 	g.P("type ", clientName, " interface {")
 	for _, method := range service.Methods {
-		g.Annotate(clientName+"."+method.GoName, method.Location)
+		g.AnnotateSymbol(clientName+"."+method.GoName, protogen.Annotation{Location: method.Location})
 		g.P(method.Comments.Leading,
 			clientSignature(g, method))
 	}
@@ -95,10 +95,10 @@ func genService(gen *protogen.Plugin, file *protogen.File, g *protogen.Generated
 	// Server interface.
 	serverType := service.GoName + "Server"
 	g.P("// ", serverType, " is the server API for ", service.GoName, " service.")
-	g.Annotate(serverType, service.Location)
+	g.AnnotateSymbol(serverType, protogen.Annotation{Location: service.Location})
 	g.P("type ", serverType, " interface {")
 	for _, method := range service.Methods {
-		g.Annotate(serverType+"."+method.GoName, method.Location)
+		g.AnnotateSymbol(serverType+"."+method.GoName, protogen.Annotation{Location: method.Location})
 		g.P(method.Comments.Leading,
 			serverSignature(g, method))
 	}
