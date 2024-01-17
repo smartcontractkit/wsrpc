@@ -1,6 +1,10 @@
 name: SonarQube Scan
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   wait_for_workflows:
@@ -28,6 +32,8 @@ jobs:
     name: SonarQube Scan
     needs: [wait_for_workflows]
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     if: always()
     steps:
       - name: Checkout the repo
@@ -39,29 +45,31 @@ jobs:
         if: always()
         uses: dawidd6/action-download-artifact@v2.27.0
         with:
-          workflow: golangci_lint.yml
+          workflow: ci-lint.yml
+          name: golangci-lint-report
           workflow_conclusion: ""
           name_is_regexp: true
-          name: golangci-lint-report
           if_no_artifact_found: warn
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download Go PKG test reports
+      - name: Download go unit test coverage reports
         if: always()
         uses: dawidd6/action-download-artifact@v2.27.0
         with:
-          workflow: pkg.yml
+          workflow: ci-test.yml
+          name: go-test-results
           workflow_conclusion: ""
           name_is_regexp: true
-          name: go-test-results
           if_no_artifact_found: warn
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set SonarQube Report Paths
         if: always()
         id: sonarqube_report_paths
         shell: bash
         run: |
-          echo "sonarqube_coverage_report_paths=$(find -type f -name '*coverage.out' -printf "%p,")" >> $GITHUB_OUTPUT
-          echo "sonarqube_golangci_report_paths=$(find -type f -name 'golangci-lint-report.xml' -printf "%p,")" >> $GITHUB_OUTPUT
+          echo "sonarqube_coverage_report_paths=$(find -type f -name '*coverage.txt' -printf '%p,')" >> $GITHUB_OUTPUT
+          echo "sonarqube_golangci_report_paths=$(find -type f -name 'golangci-lint-report.xml' -printf '%p,')" >> $GITHUB_OUTPUT
 
       - name: SonarQube Scan
         if: always()
