@@ -1,0 +1,30 @@
+name: CD Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  cd-release:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: cd-release
+        uses: smartcontractkit/.github/actions/cicd-changesets@c5b65fcfe12a5a14b60b03605748af0b0c6cfbea # cicd-changesets@0.2.0
+        with:
+          # general inputs
+          git-user: app-token-issuer-infra-releng[bot]
+          git-email: app-token-issuer-infra-releng[bot]@users.noreply.github.com
+          # changesets inputs
+          changesets-create-gh-release: "true"
+          # aws inputs
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-role-arn: ${{ secrets.AWS_OIDC_WSRPC_CI_CHANGESET_TOKEN_ISSUER_ROLE_ARN }}
+          aws-lambda-url: ${{ secrets.AWS_FOUNDATIONS_GATI_URL }}
+          # grafana inputs
+          metrics-job-name: cd-release
+          gc-basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+          gc-host: ${{ secrets.GRAFANA_CLOUD_HOST }}

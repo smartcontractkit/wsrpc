@@ -141,3 +141,23 @@ While the client's are connected, kill the server and see the client's enter a b
 - [ ] Improve Tests
 - [ ] Return a response status
 - [x] Add a Blocking DialOption
+
+## Release Process
+
+The release process for this package is based off [smartcontractkit/releng-go-lib](https://github.com/smartcontractkit/releng-go-lib). This release process leverages [changesets](https://github.com/changesets/changesets).
+
+### Setup
+
+- Install `pnpm` ([pnpm.io/installation](https://pnpm.io/installation))
+- Run `pnpm install`
+
+### General usage
+
+During a regular change, include a `changeset` file in the PR by running `pnpm changeset`. It will prompt you for a description of the change, and whether the change is a major/minor/patch version bump.
+
+This will create a file in the `.changeset` directory. When a release is created this file will be "consumed", applying the version bump, and including the change's description to the release's notes.
+
+### Creating a release
+
+When `changeset` files are present on the main branch, there will be a persistent pull request open. This pull request "consumes" the changeset files, and bumps the version in `package.json`.
+When this PR is merged, the automated workflow running against `main` will create a tag and release.
