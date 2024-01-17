@@ -8,3 +8,6 @@
 *report.xml
 *report.json
 *.out
+
+# Node Modules
+node_modules
