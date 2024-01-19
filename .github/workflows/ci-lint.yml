@@ -1,0 +1,25 @@
+name: CI Lint
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ci-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - name: ci-lint
+        uses: smartcontractkit/.github/actions/ci-lint-go@9e7cc0779934cae4a9028b8588c9adb64d8ce68c # ci-lint-go@0.1.0
+        with:
+          metrics-job-name: ci-lint
+          golangci-lint-version: v1.55.2
+          golangci-lint-args: --enable=gofmt --tests=false --exclude-use-default --timeout=5m0s --out-format checkstyle:golangci-lint-report.xml
+          gc-basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
+          gc-host: ${{ secrets.GRAFANA_CLOUD_HOST }}
+
