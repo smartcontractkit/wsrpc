@@ -1,0 +1,5 @@
+---
+"wsrpc": patch
+---
+
+Update dependencies
