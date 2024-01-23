@@ -1,5 +1,5 @@
 ---
-"wsrpc": patch
+"@chainlink/wsrpc": patch
 ---
 
 Update dependencies
