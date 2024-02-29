@@ -13,7 +13,7 @@ jobs:
       contents: read
     steps:
       - name: cd-release
-        uses: smartcontractkit/.github/actions/cicd-changesets@c5b65fcfe12a5a14b60b03605748af0b0c6cfbea # cicd-changesets@0.2.0
+        uses: smartcontractkit/.github/actions/cicd-changesets@6b08487b176ef7cad086526d0b54ddff6691c044 # cicd-changesets@0.2.1
         with:
           # general inputs
           git-user: app-token-issuer-infra-releng[bot]
@@ -26,5 +26,6 @@ jobs:
           aws-lambda-url: ${{ secrets.AWS_FOUNDATIONS_GATI_URL }}
           # grafana inputs
           metrics-job-name: cd-release
-          gc-basic-auth: ${{ secrets.GRAFANA_CLOUD_BASIC_AUTH }}
-          gc-host: ${{ secrets.GRAFANA_CLOUD_HOST }}
+          gc-basic-auth: ${{ secrets.GRAFANA_INTERNAL_BASIC_AUTH }}
+          gc-host: ${{ secrets.GRAFANA_INTERNAL_HOST }}
+          gc-org-id: ${{ secrets.GRAFANA_INTERNAL_TENANT_ID }}
