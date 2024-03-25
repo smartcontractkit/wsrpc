@@ -555,13 +555,13 @@ func (ac *addrConn) resetTransport() {
 
 		ac.mu.Unlock()
 		if err != nil {
-			ac.dopts.logger.Errorf("failed to connect to server at %s, got: %v", addr, err)
 			// After connection failure, the addrConn enters TRANSIENT_FAILURE.
 			ac.mu.Lock()
 			if ac.state == connectivity.Shutdown {
 				ac.mu.Unlock()
 				return
 			}
+			ac.dopts.logger.Errorf("failed to connect to server at %s, got: %v", addr, err)
 			ac.updateConnectivityState(connectivity.TransientFailure)
 			ac.mu.Unlock()
 
