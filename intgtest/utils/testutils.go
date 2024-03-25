@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/wsrpc"
-	"github.com/smartcontractkit/wsrpc/connectivity"
+	"google.golang.org/grpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
 	"github.com/smartcontractkit/wsrpc/logger"

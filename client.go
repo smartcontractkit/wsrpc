@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/smartcontractkit/wsrpc/connectivity"
+	"google.golang.org/grpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/internal/backoff"
 	"github.com/smartcontractkit/wsrpc/internal/message"
 	"github.com/smartcontractkit/wsrpc/internal/transport"
@@ -155,7 +155,7 @@ func (cc *ClientConn) WaitForReady(ctx context.Context) bool {
 }
 
 // GetState gets the current connectivity state.
-func (cc *ClientConn) GetState() connectivity.State {
+func (cc *ClientConn) 	GetState() connectivity.State {
 	return cc.csMgr.getState()
 }
 
