@@ -354,7 +354,7 @@ func (cc *ClientConn) register(sd *ServiceDesc, ss interface{}) {
 }
 
 // Close tears down the ClientConn and all underlying connections.
-func (cc *ClientConn) Close() {
+func (cc *ClientConn) Close() error {
 	cc.cancel()
 	cc.mu.Lock()
 	addrConn := cc.addrConn
@@ -364,6 +364,7 @@ func (cc *ClientConn) Close() {
 	addrConn.teardown() //closes lower level
 
 	cc.wg.Wait()
+	return nil
 }
 
 // Invoke sends the RPC request on the wire and returns after response is

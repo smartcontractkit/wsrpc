@@ -35,7 +35,7 @@ func Test_ServerClient_SimpleCall(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(conn.Close)
+	t.Cleanup(func() {conn.Close()})
 
 	// Register the handlers on the wsrpc client
 	pb.RegisterEchoServer(conn, &utils.EchoServer{})
@@ -77,7 +77,7 @@ func Test_ServerClient_ConcurrentCalls(t *testing.T) {
 		wsrpc.WithBlock(),
 	)
 	require.NoError(t, err)
-	t.Cleanup(conn.Close)
+	t.Cleanup(func() {conn.Close()})
 
 	// Register the handlers on the wsrpc client
 	pb.RegisterEchoServer(conn, &utils.EchoServer{})
