@@ -1,8 +1,10 @@
 // Package connectivity defines connectivity semantics.
 package connectivity
 
+import "google.golang.org/grpc/connectivity"
+
 // State indicates the state of connectivity.
-type State int
+type State connectivity.State
 
 func (s State) String() string {
 	switch s {
