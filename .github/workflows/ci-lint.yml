@@ -15,7 +15,7 @@ jobs:
       actions: read
     steps:
       - name: ci-lint
-        uses: smartcontractkit/.github/actions/ci-lint-go@19659dbe77426f23915b80aed6948dd4698b53ba # ci-lint-go@0.2.0
+        uses: smartcontractkit/.github/actions/ci-lint-go@7ac9af09dda8c553593d2153a975b43b6958fa9f # ci-lint-go@0.2.2
         with:
           golangci-lint-version: v1.55.2
           golangci-lint-args: --enable=gofmt --tests=false --exclude-use-default --timeout=5m0s --out-format checkstyle:golangci-lint-report.xml
