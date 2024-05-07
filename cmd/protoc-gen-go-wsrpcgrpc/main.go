@@ -43,7 +43,7 @@ func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
-		fmt.Printf("protoc-gen-go-wsrpc %v\n", version)
+		fmt.Printf("protoc-gen-go-wsrpcgrpc %v\n", version)
 
 		return
 	}
