@@ -26,7 +26,7 @@ func Test_ServerNotRunning(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	c := pb.NewEchoClient(conn)
 
@@ -46,7 +46,7 @@ func Test_AutomatedConnectionRetry(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	c := pb.NewEchoClient(conn)
 
@@ -110,7 +110,7 @@ func Test_BlockingDial(t *testing.T) {
 	// Wait for the connection
 	select {
 	case conn := <-unblocked:
-		t.Cleanup(func() {conn.Close()})
+		t.Cleanup(func() { conn.Close() })
 	case <-time.After(3 * time.Second):
 		assert.Fail(t, "did not connect")
 	}
@@ -150,7 +150,7 @@ func Test_InvalidCredentials(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	// Test that it fails to connect
 	require.Eventually(t, func() bool {
@@ -210,7 +210,7 @@ func Test_GetConnectedPeerPublicKeys(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	utils.WaitForReadyConnection(t, conn)
 
@@ -244,7 +244,7 @@ func Test_GetNotificationChan(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	utils.WaitForReadyConnection(t, conn)
 
@@ -280,7 +280,7 @@ func Test_ServerOpenConnections(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	utils.WaitForReadyConnection(t, conn)
 

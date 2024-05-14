@@ -39,7 +39,7 @@ func Test_Bidirectional_ConcurrentCalls(t *testing.T) {
 		wsrpc.WithBlock(),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	cClient := pb.NewEchoClient(conn)
 	// Register the handlers on the wsrpc client
@@ -94,7 +94,7 @@ func Test_Bidirectional_MultiplexCalls(t *testing.T) {
 		wsrpc.WithBlock(),
 	)
 	require.NoError(t, err)
-	t.Cleanup(func() {conn.Close()})
+	t.Cleanup(func() { conn.Close() })
 
 	cClient := pb.NewEchoClient(conn)
 	// Register the handlers on the wsrpc client
