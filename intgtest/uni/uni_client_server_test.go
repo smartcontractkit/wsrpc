@@ -35,7 +35,7 @@ func Test_ClientServer_SimpleCall(t *testing.T) {
 		wsrpc.WithTransportCreds(keypairs.Client1.PrivKey, keypairs.Server.PubKey),
 	)
 	require.NoError(t, err)
-	t.Cleanup(conn.Close)
+	t.Cleanup(func() { conn.Close() })
 
 	c := pb.NewEchoClient(conn)
 
@@ -72,7 +72,7 @@ func Test_ClientServer_ConcurrentCalls(t *testing.T) {
 		wsrpc.WithBlock(),
 	)
 	require.NoError(t, err)
-	t.Cleanup(conn.Close)
+	t.Cleanup(func() { conn.Close() })
 
 	c := pb.NewEchoClient(conn)
 

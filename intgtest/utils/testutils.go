@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/smartcontractkit/wsrpc"
-	"github.com/smartcontractkit/wsrpc/connectivity"
 	"github.com/smartcontractkit/wsrpc/credentials"
 	pb "github.com/smartcontractkit/wsrpc/intgtest/internal/rpcs"
 	"github.com/smartcontractkit/wsrpc/logger"
 	"github.com/smartcontractkit/wsrpc/peer"
+	"google.golang.org/grpc/connectivity"
 )
 
 const targetURI = "127.0.0.1:1338"
