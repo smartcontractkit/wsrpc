@@ -9,7 +9,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.4
 	go.uber.org/zap v1.26.0
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
