@@ -43,7 +43,7 @@ jobs:
 
       - name: Download Golangci-lint report
         if: always()
-        uses: dawidd6/action-download-artifact@93c629661111aae296c04004b30ae3ba22ed46f3 # v5
+        uses: dawidd6/action-download-artifact@bf251b5aa9c2f7eeb574a96ee720e24f801b7c11 # v6
         with:
           workflow: ci-lint.yml
           name: golangci-lint-report
@@ -51,7 +51,7 @@ jobs:
 
       - name: Download go unit test coverage reports
         if: always()
-        uses: dawidd6/action-download-artifact@93c629661111aae296c04004b30ae3ba22ed46f3 # v5
+        uses: dawidd6/action-download-artifact@bf251b5aa9c2f7eeb574a96ee720e24f801b7c11 # v6
         with:
           workflow: ci-test.yml
           name: go-test-results
