@@ -46,6 +46,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v2.27.0
         with:
           workflow: ci-lint.yml
+          workflow_conclusion: ""
           name: golangci-lint-report
           if_no_artifact_found: warn
 
@@ -54,6 +55,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v2.27.0
         with:
           workflow: ci-test.yml
+          workflow_conclusion: ""
           name: go-test-results
           if_no_artifact_found: warn
 
