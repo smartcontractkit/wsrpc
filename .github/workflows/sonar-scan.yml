@@ -47,6 +47,7 @@ jobs:
         with:
           workflow: ci-lint.yml
           name: golangci-lint-report
+          workflow_conclusion: ""
           if_no_artifact_found: warn
 
       - name: Download go unit test coverage reports
@@ -55,6 +56,7 @@ jobs:
         with:
           workflow: ci-test.yml
           name: go-test-results
+          workflow_conclusion: ""
           if_no_artifact_found: warn
 
       - name: Set SonarQube Report Paths
