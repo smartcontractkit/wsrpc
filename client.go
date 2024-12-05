@@ -416,6 +416,11 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	cc.addrConn.mu.RUnlock()
 	cc.mu.RUnlock()
 
+	if tr == nil {
+		// addrConn is reconnecting
+		return errors.New("transport is unavailable for writing")
+	}
+
 	if err := tr.Write(ctx, reqB); err != nil {
 		return err
 	}
