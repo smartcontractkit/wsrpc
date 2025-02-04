@@ -24,8 +24,3 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           aws-role-arn: ${{ secrets.AWS_OIDC_WSRPC_CI_CHANGESET_TOKEN_ISSUER_ROLE_ARN }}
           aws-lambda-url: ${{ secrets.AWS_FOUNDATIONS_GATI_URL }}
-          # grafana inputs
-          metrics-job-name: cd-release
-          gc-basic-auth: ${{ secrets.GRAFANA_INTERNAL_BASIC_AUTH }}
-          gc-host: ${{ secrets.GRAFANA_INTERNAL_HOST }}
-          gc-org-id: ${{ secrets.GRAFANA_INTERNAL_TENANT_ID }}

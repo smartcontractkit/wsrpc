@@ -19,9 +19,4 @@ jobs:
         with:
           golangci-lint-version: v1.55.2
           golangci-lint-args: --enable=gofmt --tests=false --exclude-use-default --timeout=5m0s --out-format checkstyle:golangci-lint-report.xml
-          # grafana inputs
-          metrics-job-name: cd-lint
-          gc-basic-auth: ${{ secrets.GRAFANA_INTERNAL_BASIC_AUTH }}
-          gc-host: ${{ secrets.GRAFANA_INTERNAL_HOST }}
-          gc-org-id: ${{ secrets.GRAFANA_INTERNAL_TENANT_ID }}
 
