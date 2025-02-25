@@ -1,6 +1,7 @@
 package wsrpc
 
 import (
+	"crypto"
 	"crypto/ed25519"
 	"time"
 
@@ -55,8 +56,7 @@ func newFuncDialOptionWithErr(f func(*dialOptions) error) *funcDialOptionWithErr
 	}
 }
 
-// WithTransportCredentials returns a DialOption which configures a connection
-// level security credentials (e.g., TLS/SSL).
+// WithTransportCreds returns a DialOption which configures a connection level security credentials (e.g., TLS/SSL).
 func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicKey) DialOption {
 	return newFuncDialOptionWithErr(func(o *dialOptions) error {
 		privKey, err := credentials.ValidPrivateKeyFromEd25519(privKey)
@@ -71,6 +71,25 @@ func WithTransportCreds(privKey ed25519.PrivateKey, serverPubKey ed25519.PublicK
 
 		// Generate the TLS config for the client
 		config, err := credentials.NewClientTLSConfig(privKey, pubs)
+		if err != nil {
+			return err
+		}
+
+		o.copts.TransportCredentials = credentials.NewTLS(config, pubs)
+		return nil
+	})
+}
+
+// WithTransportSigner returns a DialOption which configures a connection level security credentials (e.g., TLS/SSL).
+func WithTransportSigner(signer crypto.Signer, serverPubKey ed25519.PublicKey) DialOption {
+	return newFuncDialOptionWithErr(func(o *dialOptions) error {
+		pubs, err := credentials.ValidPublicKeysFromEd25519(serverPubKey)
+		if err != nil {
+			return err
+		}
+
+		// Generate the TLS config for the client
+		config, err := credentials.NewClientTLSSigner(signer, pubs)
 		if err != nil {
 			return err
 		}
