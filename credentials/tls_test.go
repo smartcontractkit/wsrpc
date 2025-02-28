@@ -38,7 +38,7 @@ func Test_NewClientTLSConfig(t *testing.T) {
 	assert.Equal(t, uint16(tls.VersionTLS13), tlsCfg.MaxVersion)
 
 	// Test a valid server certificate
-	scert, err := newMinimalX509Cert(spriv)
+	scert, err := newMinimalX509Cert(spriv.key)
 	require.NoError(t, err)
 
 	err = tlsCfg.VerifyPeerCertificate(scert.Certificate, [][]*x509.Certificate{})
@@ -51,7 +51,7 @@ func Test_NewClientTLSConfig(t *testing.T) {
 	invspriv, err := ValidPrivateKeyFromEd25519(ed25519invspriv)
 	require.NoError(t, err)
 
-	invscert, err := newMinimalX509Cert(invspriv)
+	invscert, err := newMinimalX509Cert(invspriv.key)
 	require.NoError(t, err)
 
 	err = tlsCfg.VerifyPeerCertificate(invscert.Certificate, [][]*x509.Certificate{})
@@ -84,7 +84,7 @@ func Test_NewServerTLSConfig(t *testing.T) {
 	assert.Equal(t, tls.RequireAnyClientCert, tlsCfg.ClientAuth)
 
 	// Test a valid client certificate
-	ccert, err := newMinimalX509Cert(cpriv)
+	ccert, err := newMinimalX509Cert(cpriv.key)
 	require.NoError(t, err)
 
 	err = tlsCfg.VerifyPeerCertificate(ccert.Certificate, [][]*x509.Certificate{})
@@ -97,7 +97,7 @@ func Test_NewServerTLSConfig(t *testing.T) {
 	invcpriv, err := ValidPrivateKeyFromEd25519(ed25519invcpriv)
 	require.NoError(t, err)
 
-	invccert, err := newMinimalX509Cert(invcpriv)
+	invccert, err := newMinimalX509Cert(invcpriv.key)
 	require.NoError(t, err)
 
 	err = tlsCfg.VerifyPeerCertificate(invccert.Certificate, [][]*x509.Certificate{})
