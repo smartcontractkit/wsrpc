@@ -372,9 +372,6 @@ func (cc *ClientConn) Close() error {
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 	cc.mu.RLock()
-	if cc.addrConn == nil {
-		return errors.New("client connection is not ready to proceed with Invoke")
-	}
 	cc.addrConn.mu.RLock()
 	state := cc.addrConn.state
 	cc.addrConn.mu.RUnlock()
