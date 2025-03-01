@@ -372,9 +372,6 @@ func (cc *ClientConn) Close() error {
 func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{}, reply interface{}) error {
 	// Ensure the connection state is ready
 	cc.mu.RLock()
-	if cc.addrConn == nil {
-		return errors.New("client connection is not ready to proceed with Invoke")
-	}
 	cc.addrConn.mu.RLock()
 	state := cc.addrConn.state
 	cc.addrConn.mu.RUnlock()
@@ -418,11 +415,6 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	tr = cc.addrConn.transport
 	cc.addrConn.mu.RUnlock()
 	cc.mu.RUnlock()
-
-	if tr == nil {
-		// addrConn is reconnecting
-		return errors.New("transport is unavailable for writing")
-	}
 
 	if err := tr.Write(ctx, reqB); err != nil {
 		return err
