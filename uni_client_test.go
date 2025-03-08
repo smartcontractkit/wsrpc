@@ -2,7 +2,6 @@ package wsrpc
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"testing"
 	"time"
@@ -52,7 +51,7 @@ func TestUniClient(t *testing.T) {
 			lggr: lggr,
 		}
 		resp := message.Response{}
-		uc.connector = func(ctx context.Context, target string, tlsConfig *tls.Config) (Conn, error) {
+		uc.connectFn = func(ctx context.Context) (Conn, error) {
 			return conn, nil
 		}
 		conn.On("WriteMessage", mock.Anything, mock.Anything).Return(errors.New("oh no")).Once()
@@ -74,7 +73,7 @@ func TestUniClient(t *testing.T) {
 			lggr: lggr,
 		}
 		resp := new(message.Response)
-		uc.connector = func(ctx context.Context, target string, tlsConfig *tls.Config) (Conn, error) {
+		uc.connectFn = func(ctx context.Context) (Conn, error) {
 			return conn, nil
 		}
 		conn.On("WriteMessage", mock.Anything, mock.Anything).Return(nil).Once()
@@ -99,7 +98,7 @@ func TestUniClient(t *testing.T) {
 		resp := new(message.Response)
 		req := new(message.Request)
 		// Connection always errors, but we can cancel
-		uc.connector = func(ctx context.Context, target string, tlsConfig *tls.Config) (Conn, error) {
+		uc.connectFn = func(ctx context.Context) (Conn, error) {
 			return conn, errors.New("oh no")
 		}
 		conn.On("WriteMessage", mock.Anything, mock.Anything).Return(errors.New("oh no"))
