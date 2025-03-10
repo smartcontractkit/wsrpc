@@ -40,9 +40,7 @@ type UniClientConn struct {
 	connMu sync.Mutex
 	conn   Conn
 
-	tlsConfig *tls.Config
-	target    string
-	connector func(ctx context.Context, target string, tlsConfig *tls.Config) (Conn, error)
+	connectFn func(ctx context.Context) (Conn, error)
 	lggr      Logger
 }
 
@@ -63,14 +61,22 @@ func DialUniWithContext(ctx context.Context, lggr Logger, target string, ed25519
 		return nil, err
 	}
 
-	conn, err := retryConnectWithBackoff(ctx, lggr, func(ctx2 context.Context) (Conn, error) {
-		return connect(ctx2, target, tlsConfig)
-	})
-	if err != nil {
-		return nil, err
-	}
+	u := NewTLSUniClientConn(lggr, target, tlsConfig)
+	return u, u.Dial(ctx)
+}
 
-	return &UniClientConn{conn: conn, tlsConfig: tlsConfig, target: target, lggr: lggr, connector: connect}, nil
+func NewTLSUniClientConn(lggr Logger, target string, tlsConfig *tls.Config) *UniClientConn {
+	connectFn := func(ctx context.Context) (Conn, error) {
+		return connect(ctx, target, tlsConfig)
+	}
+	return &UniClientConn{lggr: lggr, connectFn: func(ctx context.Context) (Conn, error) {
+		return retryConnectWithBackoff(ctx, lggr, connectFn)
+	}}
+}
+
+func (uc *UniClientConn) Dial(ctx context.Context) (err error) {
+	uc.conn, err = uc.connectFn(ctx)
+	return
 }
 
 func connect(ctx context.Context, target string, tlsConfig *tls.Config) (Conn, error) {
@@ -144,9 +150,7 @@ func (uc *UniClientConn) Invoke(ctx context.Context, method string, args interfa
 				return ctx.Err()
 			}
 			uc.lggr.Warnf("received error %v writing message, reconnecting", err)
-			freshConn, err2 := retryConnectWithBackoff(ctx, uc.lggr, func(ctx2 context.Context) (Conn, error) {
-				return uc.connector(ctx2, uc.target, uc.tlsConfig)
-			})
+			freshConn, err2 := uc.connectFn(ctx)
 			if err2 != nil {
 				return err2
 			}
@@ -163,9 +167,7 @@ func (uc *UniClientConn) Invoke(ctx context.Context, method string, args interfa
 				return ctx.Err()
 			}
 			uc.lggr.Warnf("received error %v reading message, reconnecting", err)
-			freshConn, err2 := retryConnectWithBackoff(ctx, uc.lggr, func(ctx2 context.Context) (Conn, error) {
-				return uc.connector(ctx2, uc.target, uc.tlsConfig)
-			})
+			freshConn, err2 := uc.connectFn(ctx)
 			if err2 != nil {
 				return err2
 			}
