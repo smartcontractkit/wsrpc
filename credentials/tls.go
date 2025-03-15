@@ -43,6 +43,18 @@ func NewServerTLSConfig(priv *PrivateKey, pubs *PublicKeys) (*tls.Config, error)
 	return c, nil
 }
 
+// NewServerTLSSigner uses the crypto.Signer and public keys to construct a mutual
+// TLS config for the server.
+func NewServerTLSSigner(signer crypto.Signer, pubs *PublicKeys) (*tls.Config, error) {
+	c, err := newMutualTLSConfig(signer, pubs)
+	if err != nil {
+		return nil, err
+	}
+	c.ClientAuth = tls.RequireAnyClientCert
+
+	return c, nil
+}
+
 // newMutualTLSConfig uses the private key and public keys to construct a mutual
 // TLS 1.3 config.
 //
