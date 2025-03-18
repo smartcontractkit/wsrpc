@@ -1,6 +1,7 @@
 package wsrpc
 
 import (
+	"crypto"
 	"crypto/ed25519"
 	"time"
 
@@ -77,6 +78,23 @@ func WithCreds(privKey ed25519.PrivateKey, pubKeys []ed25519.PublicKey) ServerOp
 		}
 
 		config, err := credentials.NewServerTLSConfig(privKey, pubs)
+		if err != nil {
+			return
+		}
+
+		o.creds = credentials.NewTLS(config, pubs)
+	})
+}
+
+// WithSigner returns a ServerOption that sets credentials for server connections.
+func WithSigner(signer crypto.Signer, pubKeys []ed25519.PublicKey) ServerOption {
+	return newFuncServerOption(func(o *serverOptions) {
+		pubs, err := credentials.ValidPublicKeysFromEd25519(pubKeys...)
+		if err != nil {
+			return
+		}
+
+		config, err := credentials.NewServerTLSSigner(signer, pubs)
 		if err != nil {
 			return
 		}
