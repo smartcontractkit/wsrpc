@@ -413,6 +413,11 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	}
 	cc.addrConn.mu.RLock()
 	tr = cc.addrConn.transport
+	if tr == nil {
+		defer cc.mu.RUnlock()
+		// State is reconnecting
+		return errors.New("connection is not ready")
+	}
 	cc.addrConn.mu.RUnlock()
 	cc.mu.RUnlock()
 
