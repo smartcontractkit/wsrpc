@@ -416,6 +416,10 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	cc.addrConn.mu.RUnlock()
 	cc.mu.RUnlock()
 
+	if tr == nil {
+		return errors.New("transport not ready")
+	}
+
 	if err := tr.Write(ctx, reqB); err != nil {
 		return err
 	}
