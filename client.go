@@ -417,7 +417,7 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, args interface{
 	cc.mu.RUnlock()
 
 	if tr == nil {
-		return errors.New("transport not ready")
+		return errors.New("wsrpc: transport not ready")
 	}
 
 	if err := tr.Write(ctx, reqB); err != nil {
