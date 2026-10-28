@@ -1,6 +1,6 @@
 {
   "name": "@chainlink/wsrpc",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Bi-directional communication channel using mTLS and web sockets.",
   "main": "index.js",
   "private": true,
